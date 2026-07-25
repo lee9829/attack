@@ -36,8 +36,9 @@ def default_config() -> Dict[str, Any]:
         "octo_password": "",
         "octo_auto_login": True,
         "allow_cloud_only": False,
-        # auto | octo | playwright  (playwright = Ubuntu/VPS without Octo Local)
-        "browser_engine": "auto",
+        # agent | auto | octo | playwright
+        # agent = Windows PC local Octo via agent/start_agent.bat
+        "browser_engine": "agent",
         "proxy_type": "http",
         "proxy_mode": "round_robin",
         "proxy_start_index": 0,

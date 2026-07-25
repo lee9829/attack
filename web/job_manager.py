@@ -41,6 +41,12 @@ class JobManager:
         self._otp_event = threading.Event()
         self._otp_code: Optional[str] = None
         self._otp_prompt: str = ""
+        # Windows agent (local Octo) bridge
+        self._agent_online = False
+        self._agent_last_seen = 0.0
+        self._agent_name = ""
+        self._agent_job: Optional[Dict[str, Any]] = None  # pending/leased payload
+        self._agent_mode = False  # current run delegated to agent
 
     # ── logging ──────────────────────────────────────────────
     def log(self, msg: str) -> None:
@@ -101,6 +107,7 @@ class JobManager:
     # ── lifecycle ────────────────────────────────────────────
     def snapshot(self) -> Dict[str, Any]:
         with self._lock:
+            online = self._agent_online and (time.time() - self._agent_last_seen) < 45
             return {
                 "running": self.state.running,
                 "dry_run": self.state.dry_run,
@@ -113,13 +120,88 @@ class JobManager:
                 "otp_prompt": self._otp_prompt,
                 "log_count": len(self._logs),
                 "latest_log_id": self._seq,
+                "agent": {
+                    "online": online,
+                    "name": self._agent_name,
+                    "last_seen": self._agent_last_seen,
+                    "pending_job": bool(self._agent_job),
+                    "mode": self._agent_mode,
+                },
             }
 
     def is_running(self) -> bool:
         with self._lock:
+            if self._agent_mode and self.state.running:
+                return True
             return self.state.running and bool(
                 self._worker and self._worker.is_alive()
             )
+
+    def agent_snapshot(self) -> Dict[str, Any]:
+        with self._lock:
+            online = self._agent_online and (time.time() - self._agent_last_seen) < 45
+            return {
+                "online": online,
+                "name": self._agent_name,
+                "last_seen": self._agent_last_seen,
+                "pending_job": bool(self._agent_job),
+                "mode": self._agent_mode,
+            }
+
+    def agent_heartbeat(self, name: str = "windows") -> Dict[str, Any]:
+        with self._lock:
+            self._agent_online = True
+            self._agent_last_seen = time.time()
+            self._agent_name = (name or "windows").strip() or "windows"
+        return self.agent_snapshot()
+
+    def agent_pull_job(self) -> Optional[Dict[str, Any]]:
+        """Windows agent pulls one pending job (if any)."""
+        with self._lock:
+            if not self.state.running or not self._agent_mode:
+                return None
+            if self._cancel.is_set():
+                return None
+            job = self._agent_job
+            if not job or job.get("leased"):
+                return None
+            job["leased"] = True
+            job["leased_at"] = time.time()
+            self.state.status = "Agent running (local Octo)…"
+            self.state.progress = {"phase": "agent", "engine": "agent"}
+            # return copy without mutating shared unexpectedly
+            return dict(job)
+
+    def agent_push_log(self, msg: str) -> None:
+        self.log(str(msg))
+
+    def agent_finish(
+        self,
+        *,
+        ok: bool,
+        result: Optional[Dict[str, Any]] = None,
+        error: str = "",
+    ) -> None:
+        with self._lock:
+            self.state.last_result = result
+            if error:
+                self.state.error = error
+                self.state.status = f"오류: {error}"
+            else:
+                r = result or {}
+                self.state.status = (
+                    f"완료 성공={r.get('success')} 실패={r.get('fail')} "
+                    f"취소={r.get('cancelled')}"
+                )
+            self.state.running = False
+            self.state.finished_at = time.time()
+            self._agent_job = None
+            self._agent_mode = False
+            self._worker = None
+        self.log(
+            f"[Agent] 작업 종료 ok={ok} "
+            f"result={result} error={error or '-'}"
+        )
 
     def start(
         self,
@@ -147,6 +229,58 @@ class JobManager:
 
         cfg = dict(config)
         cfg["dry_run"] = dry_run
+        engine = str(cfg.get("browser_engine") or "auto").strip().lower()
+
+        # Delegate to Windows agent (local Octo Browser on PC)
+        if engine in ("agent", "windows", "remote_octo", "local_agent"):
+            online = self.agent_snapshot().get("online")
+            if not online:
+                with self._lock:
+                    self.state.running = False
+                    self.state.error = "Windows 에이전트 오프라인"
+                    self.state.status = "오류: Windows 에이전트가 연결되어 있지 않습니다"
+                raise RuntimeError(
+                    "Windows 에이전트가 오프라인입니다. "
+                    "PC에서 Octo 실행 후 agent\\start_agent.bat 을 실행하세요."
+                )
+            # serialize accounts for agent
+            acc_rows = []
+            for a in accounts or []:
+                acc_rows.append(
+                    {
+                        "email": a.email,
+                        "password": a.password,
+                        "profile_title": a.profile_title,
+                        "notes": a.notes,
+                        "otp_secret": a.otp_secret,
+                        "otp_url": a.otp_url,
+                        "otp_selector": a.otp_selector,
+                    }
+                )
+            # force agent-side runner to use Octo Local on the PC
+            cfg_agent = dict(cfg)
+            cfg_agent["browser_engine"] = "octo"
+            cfg_agent["octo_auto_login"] = True
+            cfg_agent["allow_cloud_only"] = False
+            job = {
+                "id": f"job-{int(time.time())}",
+                "config": cfg_agent,
+                "accounts": acc_rows,
+                "proxies_text": str(cfg.get("proxies_text") or ""),
+                "proxy_start_index": proxy_start_index,
+                "dry_run": dry_run,
+                "leased": False,
+            }
+            with self._lock:
+                self._agent_mode = True
+                self._agent_job = job
+                self.state.status = "대기: Windows 에이전트가 작업을 가져가는 중…"
+                self.state.progress = {"phase": "agent_queue", "engine": "agent"}
+            self.log(
+                "[Agent] 작업을 Windows 에이전트 큐에 등록 "
+                f"(accounts={len(acc_rows)} dry_run={dry_run})"
+            )
+            return
 
         def on_progress(info: Dict[str, Any]) -> None:
             with self._lock:
@@ -235,6 +369,14 @@ class JobManager:
     def stop(self) -> None:
         self._cancel.set()
         self._otp_event.set()
+        with self._lock:
+            if self._agent_mode:
+                self.state.running = False
+                self.state.status = "중지 요청 (에이전트)"
+                self.state.finished_at = time.time()
+                self._agent_job = None
+                self._agent_mode = False
+                self.log("[Agent] 웹에서 중지 요청")
         self.log("[STOP] 긴급 중지 요청")
         runner = None
         with self._lock:

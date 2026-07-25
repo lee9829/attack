@@ -13,6 +13,7 @@ import json
 import os
 import secrets
 import sys
+import time
 import webbrowser
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -400,14 +401,32 @@ async def api_start(body: StartBody):
             manager.log(f"[Proxy] 형식 오류 {len(errs)}건 (무시)")
         if not proxies:
             raise HTTPException(status_code=400, detail="유효한 프록시가 없습니다.")
-        if not str(cfg.get("octo_api_token") or "").strip():
-            raise HTTPException(status_code=400, detail="Octo API 토큰을 입력하세요.")
+        engine = str(cfg.get("browser_engine") or "auto").strip().lower()
+        if engine not in ("playwright", "pw", "chromium", "server"):
+            if not str(cfg.get("octo_api_token") or "").strip():
+                raise HTTPException(status_code=400, detail="Octo API 토큰을 입력하세요.")
 
         accounts = build_accounts(cfg)
         if not accounts:
+            # allow profile-only rows for agent/playwright search jobs
+            rows = list(cfg.get("accounts_rows") or [])
+            if rows:
+                from src.runner import AccountJob
+
+                accounts = [
+                    AccountJob(
+                        email=str(r.get("email") or ""),
+                        password=str(r.get("password") or ""),
+                        profile_title=str(r.get("profile_title") or f"job-{i+1}"),
+                        notes=str(r.get("notes") or ""),
+                        otp_secret=str(r.get("otp_secret") or ""),
+                    )
+                    for i, r in enumerate(rows)
+                ]
+        if not accounts:
             raise HTTPException(
                 status_code=400,
-                detail="계정이 없습니다. email|비밀번호|2FA시크릿 형식으로 추가하세요.",
+                detail="계정이 없습니다. email|비밀번호|2FA시크릿 또는 프로필 행을 추가하세요.",
             )
 
         g = cfg.get("google_login") or {}
@@ -466,6 +485,56 @@ async def api_start(body: StartBody):
 @app.post("/api/stop")
 async def api_stop():
     manager.stop()
+    return {"ok": True, "status": manager.snapshot()}
+
+
+# ── Windows agent (local Octo on PC) ─────────────────────────
+class AgentHelloBody(BaseModel):
+    name: str = "windows"
+
+
+class AgentLogBody(BaseModel):
+    msg: str = ""
+
+
+class AgentFinishBody(BaseModel):
+    ok: bool = True
+    result: Dict[str, Any] = Field(default_factory=dict)
+    error: str = ""
+
+
+@app.post("/api/agent/heartbeat")
+async def api_agent_heartbeat(body: AgentHelloBody):
+    snap = manager.agent_heartbeat(body.name)
+    return {"ok": True, "agent": snap, "server_time": time.time()}
+
+
+@app.get("/api/agent/status")
+async def api_agent_status():
+    return {"ok": True, "agent": manager.agent_snapshot(), "status": manager.snapshot()}
+
+
+@app.get("/api/agent/next-job")
+async def api_agent_next_job():
+    """Windows agent polls this to receive a job queued by the web Start button."""
+    manager.agent_heartbeat("windows")
+    job = manager.agent_pull_job()
+    if not job:
+        return {"ok": True, "job": None}
+    manager.log(f"[Agent] 작업 전달 → {job.get('id')}")
+    return {"ok": True, "job": job}
+
+
+@app.post("/api/agent/log")
+async def api_agent_log(body: AgentLogBody):
+    if body.msg:
+        manager.agent_push_log(body.msg)
+    return {"ok": True}
+
+
+@app.post("/api/agent/finish")
+async def api_agent_finish(body: AgentFinishBody):
+    manager.agent_finish(ok=bool(body.ok), result=body.result or {}, error=body.error or "")
     return {"ok": True, "status": manager.snapshot()}
 
 

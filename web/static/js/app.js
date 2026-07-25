@@ -623,6 +623,24 @@
     }
   }
 
+  async function refreshAgentStatus() {
+    const el = $("#agentStatus");
+    if (!el) return;
+    try {
+      const data = await api("/api/agent/status");
+      const a = data.agent || {};
+      if (a.online) {
+        el.textContent = `온라인 (${a.name || "windows"})`;
+        el.style.color = "#3dd68c";
+      } else {
+        el.textContent = "오프라인 — PC에서 start_agent.bat 실행";
+        el.style.color = "#f5a524";
+      }
+    } catch (e) {
+      el.textContent = "상태 확인 실패";
+    }
+  }
+
   async function testConnection() {
     try {
       const body = {
@@ -641,6 +659,7 @@
       el.textContent = data.status;
       el.className = `pill ${data.local_ok ? "ok" : "warn"}`;
       toast(data.status);
+      refreshAgentStatus();
     } catch (e) {
       const el = $("#connStatus");
       el.textContent = `● Offline — ${e.message}`;
@@ -974,6 +993,8 @@
       appendLogs(
         (await api(`/api/logs?after=0`)).logs || []
       );
+      refreshAgentStatus();
+      setInterval(refreshAgentStatus, 5000);
       try {
         const latest = await api("/api/ops/latest");
         if (latest.report) renderOpsReport(latest.report);

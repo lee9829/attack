@@ -527,11 +527,16 @@ user_id=123'></textarea>
           <label class="field">
             <span>브라우저 엔진</span>
             <select id="browserEngine">
-              <option value="auto">auto (Octo 가능하면 Octo, 아니면 서버 Playwright)</option>
-              <option value="playwright">playwright — Ubuntu 서버 전용 (프록시+Chromium)</option>
-              <option value="octo">octo — Local Client 필수</option>
+              <option value="agent">agent — Windows PC Octo 연동 (권장)</option>
+              <option value="auto">auto (서버 Octo 가능 시 Octo, 아니면 Playwright)</option>
+              <option value="playwright">playwright — 서버 Chromium+프록시</option>
+              <option value="octo">octo — 서버 Local Client 필수</option>
             </select>
           </label>
+          <p class="hint" id="agentHint">
+            <strong>agent 모드:</strong> PC에서 Octo 실행 → <code>agent\start_agent.bat</code> 실행 →
+            웹에서 시작. 상태: <span id="agentStatus">확인 중…</span>
+          </p>
           <label class="check"><input type="checkbox" id="reuseProfiles" checked /> 기존 프로필 재사용</label>
           <label class="check"><input type="checkbox" id="createMissing" checked /> 없으면 생성</label>
           <label class="check"><input type="checkbox" id="stopAfter" checked /> 작업 후 프로필 중지</label>
