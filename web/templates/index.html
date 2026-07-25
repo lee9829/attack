@@ -105,6 +105,7 @@
           </div>
         </div>
 
+        <div id="workerBoard" class="worker-board"></div>
         <div id="activeJobs" class="active-jobs muted">실행 중 작업 없음</div>
         <div id="otpPanel" class="otp-panel hidden">
           <strong>2FA 코드 입력</strong>
@@ -224,8 +225,8 @@
                 <input type="number" id="delayJobsHome" value="15" min="0" style="width:5.5rem" />
               </label>
               <label class="field inline">
-                <span>동시 Octo 창</span>
-                <input type="number" id="parallelJobsHome" value="1" min="1" max="20" style="width:5rem" />
+                <span>동시 Octo 창 (빠른 멀티)</span>
+                <input type="number" id="parallelJobsHome" value="5" min="1" max="20" style="width:5rem" />
               </label>
             </div>
             <label class="field">

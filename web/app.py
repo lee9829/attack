@@ -580,6 +580,32 @@ async def api_agent_log(body: AgentLogBody):
     return {"ok": True}
 
 
+class AgentProgressBody(BaseModel):
+    phase: str = ""
+    job: int = 0
+    email: str = ""
+    profile: str = ""
+    ip: str = ""
+    proxy: str = ""
+    keyword: str = ""
+    matched_url: str = ""
+    google: str = ""
+    action: str = ""
+    has_2fa: bool = False
+    parallel: int = 1
+    loop: int = 0
+    success: int = 0
+    fail: int = 0
+    total: int = 0
+    active_jobs: list = Field(default_factory=list)
+
+
+@app.post("/api/agent/progress")
+async def api_agent_progress(body: AgentProgressBody):
+    manager.agent_push_progress(body.model_dump())
+    return {"ok": True}
+
+
 @app.post("/api/agent/finish")
 async def api_agent_finish(body: AgentFinishBody):
     manager.agent_finish(ok=bool(body.ok), result=body.result or {}, error=body.error or "")

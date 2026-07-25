@@ -793,6 +793,15 @@ class JobRunner:
             f"배정 proxy={proxy.display} host={proxy.host}:{proxy.port} "
             f"type={proxy.type} mode={self.rotator.mode if hasattr(self.rotator,'mode') else self.config.get('proxy_mode')}"
         )
+        self._touch_active(
+            job_index,
+            phase="prepare",
+            action="프로필·프록시 준비",
+            profile=account.profile_title,
+            email=account.email,
+            proxy=proxy.display,
+            google="대기",
+        )
 
         sf = self.search_flow or {}
         if self.config.get("dry_run"):
@@ -894,6 +903,16 @@ class JobRunner:
                 jlog.warn(
                     "Local API가 출구 IP를 반환하지 않음 — 브라우저에서 재확인 후 로그에 기록됩니다"
                 )
+            self._touch_active(
+                job_index,
+                phase="octo_start",
+                action="Octo 창 실행됨",
+                profile=account.profile_title,
+                uuid=(uuid[:12] + "…") if uuid else "",
+                ip=ip or "확인중",
+                proxy=proxy.display,
+                google="대기",
+            )
 
             profile_info = {
                 "uuid": uuid,
@@ -977,19 +996,17 @@ class JobRunner:
             else:
                 jlog.warn("이 계정에 2FA 시크릿 없음 — 챌린지 시 수동/실패 가능")
 
-            if self.on_job_progress:
-                try:
-                    self.on_job_progress(
-                        {
-                            "phase": "browser",
-                            "job": job_index,
-                            "email": account.email,
-                            "profile": account.profile_title,
-                            "has_2fa": bool(account.otp_secret),
-                        }
-                    )
-                except Exception:
-                    pass
+            self._touch_active(
+                job_index,
+                phase="browser",
+                action="브라우저 자동화 시작",
+                profile=account.profile_title,
+                email=account.email,
+                ip=jlog.proxy_ip or ip or "확인중",
+                proxy=proxy.display,
+                google="로그인 시도" if google_cfg.get("enabled") else "스킵",
+                has_2fa=bool(account.otp_secret),
+            )
 
             ops_cfg = dict(self.config.get("ops") or {})
             ops_preset = {}
@@ -1052,6 +1069,20 @@ class JobRunner:
                     f"★ 브라우저로 확인한 출구 IP = {browser_ip} "
                     f"→ 이후 검색·클릭은 이 IP로 나간 것입니다"
                 )
+            g_ok = result.get("google_ok")
+            self._touch_active(
+                job_index,
+                phase="done" if result.get("ok") or result.get("search_ok") else "browser",
+                action="클릭 완료" if result.get("search_ok") else "작업 종료",
+                profile=account.profile_title,
+                email=account.email,
+                ip=browser_ip or jlog.proxy_ip or ip or "미확인",
+                proxy=proxy.display,
+                keyword=str(result.get("keyword") or ""),
+                matched_url=str(result.get("matched_url") or ""),
+                google="로그인OK" if g_ok else ("로그인실패" if g_ok is False else "스킵/미확인"),
+                has_2fa=bool(account.otp_secret),
+            )
 
             # Mobile fingerprint ↔ exit IP match report (Octo path only)
             ip_match: Dict[str, Any] = {}
@@ -1156,9 +1187,37 @@ class JobRunner:
             else:
                 self._active_jobs[job_index] = info
 
+    def _touch_active(self, job_index: int, **fields: Any) -> None:
+        """Update live worker card (profile / IP / login / click) and push progress."""
+        with self._active_lock:
+            cur = dict(self._active_jobs.get(job_index) or {})
+            cur.update({k: v for k, v in fields.items() if v is not None})
+            cur["job"] = job_index
+            cur["updated_at"] = time.time()
+            self._active_jobs[job_index] = cur
+            snap = dict(cur)
+        self._emit_progress(
+            {
+                "phase": str(fields.get("phase") or snap.get("phase") or "running"),
+                "job": job_index,
+                "email": snap.get("email"),
+                "profile": snap.get("profile"),
+                "ip": snap.get("ip"),
+                "proxy": snap.get("proxy"),
+                "keyword": snap.get("keyword"),
+                "matched_url": snap.get("matched_url"),
+                "google": snap.get("google"),
+                "has_2fa": snap.get("has_2fa"),
+                "action": snap.get("action"),
+            }
+        )
+
     def active_jobs_snapshot(self) -> List[Dict[str, Any]]:
         with self._active_lock:
-            return list(self._active_jobs.values())
+            return sorted(
+                list(self._active_jobs.values()),
+                key=lambda x: int(x.get("job") or 0),
+            )
 
     def _emit_progress(self, payload: Dict[str, Any]) -> None:
         if not self.on_job_progress:
@@ -1178,7 +1237,13 @@ class JobRunner:
                 "job": job_index,
                 "email": account.email,
                 "profile": account.profile_title,
-                "phase": "running",
+                "phase": "start",
+                "action": "시작",
+                "ip": "",
+                "proxy": "",
+                "keyword": "",
+                "matched_url": "",
+                "google": "대기",
                 "has_2fa": bool(account.otp_secret),
             },
         )
@@ -1189,6 +1254,7 @@ class JobRunner:
                 "email": account.email,
                 "profile": account.profile_title,
                 "has_2fa": bool(account.otp_secret),
+                "action": "시작",
             }
         )
         try:

@@ -175,6 +175,32 @@ class JobManager:
     def agent_push_log(self, msg: str) -> None:
         self.log(str(msg))
 
+    def agent_push_progress(self, payload: Dict[str, Any]) -> None:
+        """Windows agent streams live worker cards (profile/IP/click)."""
+        data = dict(payload or {})
+        with self._lock:
+            if not self.state.running:
+                return
+            prev = dict(self.state.progress or {})
+            # merge active_jobs list from agent
+            if "active_jobs" in data:
+                prev["active_jobs"] = list(data.get("active_jobs") or [])
+            for k, v in data.items():
+                if k == "active_jobs":
+                    continue
+                prev[k] = v
+            if data.get("phase"):
+                prev["phase"] = data["phase"]
+            self.state.progress = prev
+            par = prev.get("parallel") or 1
+            n_act = len(prev.get("active_jobs") or [])
+            loop = prev.get("loop")
+            if self._agent_mode:
+                self.state.status = (
+                    f"오토 실행 중 · 동시 {n_act or par}"
+                    + (f" · 회차 {loop}" if loop else "")
+                )
+
     def agent_finish(
         self,
         *,

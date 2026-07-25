@@ -144,9 +144,33 @@ def run_job(s: requests.Session, job: Dict[str, Any]) -> None:
         print(line, flush=True)
         push_log(s, line)
 
+    def on_progress(info: Dict[str, Any]) -> None:
+        try:
+            s.post(
+                f"{SERVER}/api/agent/progress",
+                json=dict(info or {}),
+                timeout=10,
+            )
+        except Exception:
+            pass
+
+    # 빠른 동시 클릭: 설정 병렬 유지 (최소 1)
+    try:
+        if int(cfg.get("parallel_jobs") or 1) < 1:
+            cfg["parallel_jobs"] = 1
+    except Exception:
+        cfg["parallel_jobs"] = 3
+    # 스태거 너무 크면 느려짐 — 상한
+    try:
+        if float(cfg.get("stagger_start_sec") or 0) > 1.0:
+            cfg["stagger_start_sec"] = 0.4
+    except Exception:
+        cfg["stagger_start_sec"] = 0.35
+
     log(
         f"[Agent] 작업 시작 id={job.get('id')} "
-        f"accounts={len(accounts)} proxies={len(proxies)}"
+        f"accounts={len(accounts)} proxies={len(proxies)} "
+        f"parallel={cfg.get('parallel_jobs')}"
     )
     try:
         runner = JobRunner(
@@ -156,6 +180,7 @@ def run_job(s: requests.Session, job: Dict[str, Any]) -> None:
             accounts=accounts,
             log=log,
             proxy_start_index=int(job.get("proxy_start_index") or 0),
+            on_job_progress=on_progress,
         )
         result = runner.run_all()
         log(

@@ -31,6 +31,44 @@
     });
   }
 
+  function renderWorkerBoard(jobs, running) {
+    const board = $("#workerBoard");
+    if (!board) return;
+    const list = Array.isArray(jobs) ? jobs : [];
+    if (!list.length) {
+      board.innerHTML = running
+        ? `<div class="worker-empty">동시 워커 준비 중…</div>`
+        : `<div class="worker-empty">대기 · START 하면 프로필·IP·클릭이 카드로 표시됩니다</div>`;
+      return;
+    }
+    board.innerHTML = list
+      .map((a) => {
+        const g = String(a.google || "—");
+        const gClass = /OK|성공/i.test(g)
+          ? "ok"
+          : /실패|fail/i.test(g)
+            ? "bad"
+            : /시도|진행|로그인/i.test(g)
+              ? "run"
+              : "";
+        return `<div class="worker-card">
+          <div class="wc-head">
+            <span class="wc-job">#${a.job ?? "?"} 동시</span>
+            <span class="wc-phase">${esc(a.action || a.phase || "run")}</span>
+          </div>
+          <div class="wc-row"><span>프로필</span><b>${esc(a.profile || "—")}</b></div>
+          <div class="wc-row"><span>계정</span><b>${esc(a.email || "—")}</b></div>
+          <div class="wc-row"><span>출구 IP</span><b class="wc-ip">${esc(a.ip || "확인중")}</b></div>
+          <div class="wc-row"><span>프록시</span><b class="wc-proxy">${esc((a.proxy || "—").toString().slice(0, 42))}</b></div>
+          <div class="wc-row"><span>구글</span><b class="wc-g ${gClass}">${esc(g)}</b></div>
+          <div class="wc-row"><span>검색어</span><b>${esc(a.keyword || "—")}</b></div>
+          <div class="wc-row"><span>클릭</span><b class="wc-url">${esc((a.matched_url || "—").toString().slice(0, 64))}</b></div>
+          <div class="wc-row"><span>2FA</span><b>${a.has_2fa ? "Y" : "N"}</b></div>
+        </div>`;
+      })
+      .join("");
+  }
+
   function toast(msg, type = "ok") {
     const el = $("#toast");
     el.textContent = msg;
@@ -1057,6 +1095,7 @@
     }
 
     const act = p.active_jobs || [];
+    renderWorkerBoard(act, s.running);
     const box = $("#activeJobs");
     if (box) {
       if (act.length) {
@@ -1065,13 +1104,13 @@
         box.textContent = act
           .map(
             (a) =>
-              `● J${a.job} ${(a.email || a.profile || "-").slice(0, 40)} · ${a.phase || "run"}`
+              `● J${a.job} ${(a.profile || a.email || "-").slice(0, 28)} · IP=${a.ip || "?"} · ${a.action || a.phase || "run"} · 클릭=${(a.matched_url || "-").slice(0, 40)}`
           )
           .join("\n");
       } else if (s.running) {
         box.classList.remove("has-jobs");
         box.classList.add("muted");
-        box.textContent = "워커 기동 중…";
+        box.textContent = "워커 기동 중… (동시 실행 대기)";
       } else {
         box.classList.remove("has-jobs");
         box.classList.add("muted");
