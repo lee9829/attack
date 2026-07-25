@@ -479,7 +479,7 @@ def normalize_config(raw: Dict[str, Any]) -> Dict[str, Any]:
     cfg["google_login"] = g
     cfg["search_flow"] = sf
 
-    # parallel
+    # parallel + macro loops (0 = infinite until stop)
     try:
         cfg["parallel_jobs"] = max(1, min(int(cfg.get("parallel_jobs") or 1), 30))
     except (TypeError, ValueError):
@@ -488,6 +488,22 @@ def normalize_config(raw: Dict[str, Any]) -> Dict[str, Any]:
         cfg["stagger_start_sec"] = max(0.0, float(cfg.get("stagger_start_sec") or 0))
     except (TypeError, ValueError):
         cfg["stagger_start_sec"] = 0.0
+    try:
+        cfg["macro_loops"] = max(0, min(int(cfg.get("macro_loops") or 1), 9999))
+    except (TypeError, ValueError):
+        cfg["macro_loops"] = 1
+    try:
+        cfg["delay_between_loops_sec"] = max(
+            0, int(cfg.get("delay_between_loops_sec") or 30)
+        )
+    except (TypeError, ValueError):
+        cfg["delay_between_loops_sec"] = 30
+    try:
+        cfg["delay_between_jobs_sec"] = max(
+            0, int(cfg.get("delay_between_jobs_sec") or 15)
+        )
+    except (TypeError, ValueError):
+        cfg["delay_between_jobs_sec"] = 15
 
     # cookies (own-site QA inject into Octo profile)
     ck = dict(cfg.get("cookies") or {})
