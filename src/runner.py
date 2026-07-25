@@ -354,9 +354,13 @@ class JobRunner:
         if self._log_path:
             self.log(f"[INFO] 세션 로그 파일: {self._log_path}")
 
+        engine = str(config.get("browser_engine") or "auto").strip().lower()
         token = str(config.get("octo_api_token") or "").strip()
-        if not token or "여기에" in token or token.lower() in ("your_token", "changeme"):
-            raise ValueError("Octo API 토큰을 설정하세요.")
+        if engine not in ("playwright", "pw", "chromium", "server"):
+            if not token or "여기에" in token or token.lower() in ("your_token", "changeme"):
+                raise ValueError("Octo API 토큰을 설정하세요. (또는 browser_engine=playwright)")
+        if not token:
+            token = "unused-for-playwright-engine"
 
         self.client = OctoClient(
             api_token=token,
@@ -367,8 +371,13 @@ class JobRunner:
             local_base=str(config.get("local_base") or "http://127.0.0.1:58888/api"),
         )
 
-        # Cloud API = 프로필/프록시 관리 · Local Client = 프로필 시작+CDP
-        # VPS에서는 같은 서버에 Octo headless 클라이언트를 띄운 뒤 로그인
+        # browser_engine:
+        #   octo       — require Local Client (official Octo CDP)
+        #   playwright — Ubuntu/VPS Chromium + proxy (no Octo Local)
+        #   auto       — try Local; fall back to playwright
+        self.browser_engine = engine
+        self._local_ready = False
+
         octo_email = str(
             config.get("octo_email")
             or config.get("octo_login_email")
@@ -380,26 +389,42 @@ class JobRunner:
             or ""
         )
         auto_login = bool(config.get("octo_auto_login", True))
-        try:
-            sess = self.client.ensure_local_session(
-                email=octo_email,
-                password=octo_password,
-                auto_login=auto_login,
-            )
+
+        if engine in ("playwright", "pw", "chromium", "server"):
             self.log(
-                f"[Octo Local] 준비 완료 · user={sess.get('username') or '?'} · "
-                f"action={sess.get('action')}"
+                "[엔진] Playwright 서버 모드 — 프록시 경유 Chromium으로 Google 자동화 "
+                "(Octo Local 불필요)"
             )
-        except Exception as exc:
-            self.log(f"[Octo Local] 경고: {exc}")
-            # still allow cloud-only dry checks; start_profile will fail clearly later
-            if not bool(config.get("allow_cloud_only", False)):
-                raise ValueError(
-                    "Local Client(Octo) 연결 실패. "
-                    "서버에 Octo headless 클라이언트를 설치·실행하고 "
-                    "octo_email/octo_password 를 설정하세요. "
-                    f"상세: {exc}"
-                ) from exc
+            self.browser_engine = "playwright"
+        else:
+            try:
+                sess = self.client.ensure_local_session(
+                    email=octo_email,
+                    password=octo_password,
+                    auto_login=auto_login,
+                )
+                self._local_ready = True
+                self.log(
+                    f"[Octo Local] 준비 완료 · user={sess.get('username') or '?'} · "
+                    f"action={sess.get('action')}"
+                )
+                if engine == "auto":
+                    self.browser_engine = "octo"
+            except Exception as exc:
+                self.log(f"[Octo Local] 연결 실패: {exc}")
+                if engine == "octo" and not bool(config.get("allow_cloud_only", False)):
+                    raise ValueError(
+                        "Local Client(Octo) 연결 실패. "
+                        "서버에 Octo headless 클라이언트를 실행하거나 "
+                        "browser_engine=playwright 로 서버 엔진을 사용하세요. "
+                        f"상세: {exc}"
+                    ) from exc
+                # auto / allow_cloud_only → playwright fallback
+                self.browser_engine = "playwright"
+                self.log(
+                    "[엔진] 자동 전환 → Playwright 서버 모드 "
+                    "(이 VPS에서 Octo Client 실행 불가 시 Google 클릭용)"
+                )
 
         proxy_type = str(config.get("proxy_type") or "http")
         if proxies is not None:
@@ -799,65 +824,93 @@ class JobRunner:
             )
             return {"ok": True, "dry_run": True, "proxy": proxy.alias}
 
-        uuid = self.prepare_profile(account.profile_title, proxy, jlog)
-        self._check_cancel()
-
-        for active in self.client.list_active_profiles():
-            if str(active.get("uuid")) == uuid:
-                jlog.warn("이미 실행 중인 프로필 → force stop 후 재시작")
-                self.client.stop_profile(uuid, force=True)
-                time.sleep(2)
-
+        eng = str(getattr(self, "browser_engine", "octo") or "octo").lower()
+        use_pw = eng in ("playwright", "pw", "chromium", "server")
         prof_opts = self._profile_options()
-        jlog.step_log(
-            "Local API 프로필 Start",
-            f"uuid={uuid[:8]}… headless={self.config.get('headless')} "
-            f"os={prof_opts.get('os_name')}",
-        )
-        start = self.client.start_profile(
-            uuid,
-            headless=bool(self.config.get("headless", False)),
-            timeout_sec=int(self.config.get("start_timeout_sec") or 120),
-        )
-        with self._uuid_lock:
-            self.started_uuids.append(uuid)
-        ws = str(start.get("ws_endpoint") or "")
-        debug_port = start.get("debug_port")
-        geo = self.client.extract_connection_ip(start)
-        ip = geo.get("ip") or ""
-        if geo.get("country") or geo.get("city"):
-            jlog.proxy_log(
-                f"connection_data country={geo.get('country') or '-'} "
-                f"city={geo.get('city') or '-'}"
+        uuid = ""
+        ws = ""
+        debug_port = None
+        ip = ""
+        profile_info: Dict[str, Any] = {
+            "uuid": "",
+            "os": prof_opts.get("os_name"),
+            "mobile": prof_opts.get("mobile"),
+        }
+
+        if use_pw:
+            jlog.step_log(
+                "Playwright 서버 엔진",
+                f"headless={self.config.get('headless', True)} proxy={proxy.display}",
             )
-        jlog.set_proxy_ip(ip or "미확인")
-        jlog.ok(
-            f"프로필 시작 완료 · 디버그포트={debug_port} · "
-            f"API보고IP={ip or '없음'} · CDP={'연결가능' if (ws or debug_port) else '불가'}"
-        )
-        if ip:
-            jlog.proxy_log(
-                f"★ 이 작업에서 클릭·접속에 사용될 출구 IP = {ip} "
-                f"(프로필={account.profile_title}, 프록시={proxy.display})"
+            jlog.info(
+                "Octo Local 없이 서버 Chromium + 프록시로 Google 검색/클릭 진행"
             )
+            jlog.set_proxy_ip("미확인")
         else:
-            jlog.warn(
-                "Local API가 출구 IP를 반환하지 않음 — 브라우저에서 재확인 후 로그에 기록됩니다"
-            )
+            uuid = self.prepare_profile(account.profile_title, proxy, jlog)
+            self._check_cancel()
 
-        # Profile fingerprint detail for mobile/IP matching
-        profile_info: Dict[str, Any] = {"uuid": uuid, "os": prof_opts.get("os_name"), "mobile": prof_opts.get("mobile")}
-        try:
-            profile_info = self.client.profile_os_info(uuid)
-            jlog.profile_log(
-                f"매칭 기준 FP os={profile_info.get('os')} mobile={profile_info.get('mobile')} "
-                f"device={profile_info.get('device') or '-'}"
-            )
-        except Exception as exc:
-            jlog.warn(f"profile_os_info: {exc}")
+            try:
+                for active in self.client.list_active_profiles():
+                    if str(active.get("uuid")) == uuid:
+                        jlog.warn("이미 실행 중인 프로필 → force stop 후 재시작")
+                        self.client.stop_profile(uuid, force=True)
+                        time.sleep(2)
+            except Exception as exc:
+                jlog.warn(f"active profiles: {exc}")
 
-        if not ws and debug_port:
-            ws = f"http://127.0.0.1:{debug_port}"
+            jlog.step_log(
+                "Local API 프로필 Start",
+                f"uuid={uuid[:8]}… headless={self.config.get('headless')} "
+                f"os={prof_opts.get('os_name')}",
+            )
+            start = self.client.start_profile(
+                uuid,
+                headless=bool(self.config.get("headless", False)),
+                timeout_sec=int(self.config.get("start_timeout_sec") or 120),
+            )
+            with self._uuid_lock:
+                self.started_uuids.append(uuid)
+            ws = str(start.get("ws_endpoint") or "")
+            debug_port = start.get("debug_port")
+            geo = self.client.extract_connection_ip(start)
+            ip = geo.get("ip") or ""
+            if geo.get("country") or geo.get("city"):
+                jlog.proxy_log(
+                    f"connection_data country={geo.get('country') or '-'} "
+                    f"city={geo.get('city') or '-'}"
+                )
+            jlog.set_proxy_ip(ip or "미확인")
+            jlog.ok(
+                f"프로필 시작 완료 · 디버그포트={debug_port} · "
+                f"API보고IP={ip or '없음'} · CDP={'연결가능' if (ws or debug_port) else '불가'}"
+            )
+            if ip:
+                jlog.proxy_log(
+                    f"★ 이 작업에서 클릭·접속에 사용될 출구 IP = {ip} "
+                    f"(프로필={account.profile_title}, 프록시={proxy.display})"
+                )
+            else:
+                jlog.warn(
+                    "Local API가 출구 IP를 반환하지 않음 — 브라우저에서 재확인 후 로그에 기록됩니다"
+                )
+
+            profile_info = {
+                "uuid": uuid,
+                "os": prof_opts.get("os_name"),
+                "mobile": prof_opts.get("mobile"),
+            }
+            try:
+                profile_info = self.client.profile_os_info(uuid)
+                jlog.profile_log(
+                    f"매칭 기준 FP os={profile_info.get('os')} mobile={profile_info.get('mobile')} "
+                    f"device={profile_info.get('device') or '-'}"
+                )
+            except Exception as exc:
+                jlog.warn(f"profile_os_info: {exc}")
+
+            if not ws and debug_port:
+                ws = f"http://127.0.0.1:{debug_port}"
 
         try:
             self._check_cancel()
@@ -964,6 +1017,15 @@ class JobRunner:
                 cookies_cfg=dict(self.config.get("cookies") or {}),
                 log=jlog,
                 ask_2fa=job_ask_2fa,
+                engine=eng if use_pw else "octo",
+                proxy={
+                    "host": proxy.host,
+                    "port": proxy.port,
+                    "login": proxy.login,
+                    "password": proxy.password,
+                    "type": proxy.type,
+                },
+                headless=bool(self.config.get("headless", True if use_pw else False)),
                 job_meta={
                     "job_index": job_index,
                     "profile": account.profile_title,
@@ -980,6 +1042,7 @@ class JobRunner:
                     "mobile_fp": bool(profile_info.get("mobile")),
                     "traffic_metrics": prof_opts.get("traffic_metrics", True),
                     "allowed_hosts": allowed_hosts,
+                    "engine": eng if use_pw else "octo",
                 },
             )
             browser_ip = str(result.get("detected_ip") or "")
@@ -990,9 +1053,9 @@ class JobRunner:
                     f"→ 이후 검색·클릭은 이 IP로 나간 것입니다"
                 )
 
-            # Mobile fingerprint ↔ exit IP match report
+            # Mobile fingerprint ↔ exit IP match report (Octo path only)
             ip_match: Dict[str, Any] = {}
-            if prof_opts.get("match_ip", True):
+            if (not use_pw) and prof_opts.get("match_ip", True):
                 try:
                     ip_match = self.client.match_profile_mobile_ip(
                         profile_info=profile_info,
@@ -1054,7 +1117,7 @@ class JobRunner:
                 "result": result,
             }
         finally:
-            if self.config.get("stop_profile_after_job", True):
+            if uuid and self.config.get("stop_profile_after_job", True) and not use_pw:
                 try:
                     jlog.step_log("프로필 Stop", uuid[:8] + "…")
                     self.client.stop_profile(uuid)

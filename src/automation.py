@@ -696,15 +696,32 @@ async def inject_cookies(
 
 
 class BrowserSession:
-    def __init__(self, ws_endpoint: str, debug_port: Optional[str] = None):
-        self.ws_endpoint = ws_endpoint
+    def __init__(
+        self,
+        ws_endpoint: str = "",
+        debug_port: Optional[str] = None,
+        *,
+        engine: str = "octo",
+        proxy: Optional[Dict[str, Any]] = None,
+        headless: bool = True,
+    ):
+        self.ws_endpoint = ws_endpoint or ""
         self.debug_port = str(debug_port) if debug_port else None
+        self.engine = (engine or "octo").strip().lower()
+        self.proxy = dict(proxy or {})
+        self.headless = bool(headless)
         self._pw = None
         self.browser: Optional[Browser] = None
         self.page: Optional[Page] = None
+        self._owned_browser = False  # True when we launched Chromium (not Octo CDP)
 
     async def connect(self) -> Page:
         self._pw = await async_playwright().start()
+        if self.engine in ("playwright", "pw", "chromium", "server"):
+            return await self._launch_playwright()
+        return await self._connect_cdp()
+
+    async def _connect_cdp(self) -> Page:
         endpoint = self.ws_endpoint
         try:
             self.browser = await self._pw.chromium.connect_over_cdp(endpoint)
@@ -715,6 +732,7 @@ class BrowserSession:
                 )
             else:
                 raise
+        self._owned_browser = False
 
         contexts = self.browser.contexts
         if contexts and contexts[0].pages:
@@ -726,13 +744,59 @@ class BrowserSession:
             self.page = await context.new_page()
         return self.page
 
+    async def _launch_playwright(self) -> Page:
+        """
+        Ubuntu/VPS path: launch Chromium with HTTP(S)/SOCKS proxy.
+        Used when Octo Local Client cannot run (e.g. missing SSE4 CPU).
+        """
+        launch_kwargs: Dict[str, Any] = {
+            "headless": self.headless,
+            "args": [
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+            ],
+        }
+        proxy_cfg: Dict[str, Any] = {}
+        host = str(self.proxy.get("host") or "").strip()
+        port = self.proxy.get("port")
+        ptype = str(self.proxy.get("type") or "http").lower()
+        if host and port:
+            if ptype in ("socks", "socks5"):
+                server = f"socks5://{host}:{int(port)}"
+            elif ptype == "https":
+                server = f"https://{host}:{int(port)}"
+            else:
+                server = f"http://{host}:{int(port)}"
+            proxy_cfg["server"] = server
+            login = str(self.proxy.get("login") or "")
+            password = str(self.proxy.get("password") or "")
+            if login:
+                proxy_cfg["username"] = login
+                proxy_cfg["password"] = password
+            launch_kwargs["proxy"] = proxy_cfg
+
+        self.browser = await self._pw.chromium.launch(**launch_kwargs)
+        self._owned_browser = True
+        context = await self.browser.new_context(
+            viewport={"width": 1280, "height": 800},
+            locale="ko-KR",
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/122.0.0.0 Safari/537.36"
+            ),
+        )
+        self.page = await context.new_page()
+        return self.page
+
     async def live_page(self, log=print) -> Page:
         """Return a usable page; recover if the previous tab was closed (Octo)."""
         self.page = await ensure_live_page(self.page, self.browser, log)
         return self.page
 
     async def close(self) -> None:
-        # Do not close the Octo browser process; only disconnect Playwright.
+        # Octo CDP: disconnect only. Playwright-launched: close browser process.
         try:
             if self.browser:
                 await self.browser.close()
@@ -4161,8 +4225,17 @@ async def run_browser_job(
     log=print,
     ask_2fa: Optional[Ask2FAFn] = None,
     job_meta: Optional[Dict[str, Any]] = None,
+    engine: str = "octo",
+    proxy: Optional[Dict[str, Any]] = None,
+    headless: bool = True,
 ) -> Dict[str, Any]:
-    session = BrowserSession(ws_endpoint, debug_port)
+    session = BrowserSession(
+        ws_endpoint or "",
+        debug_port,
+        engine=engine,
+        proxy=proxy,
+        headless=headless,
+    )
     meta = dict(job_meta or {})
     ck_cfg = dict(cookies_cfg or {})
     result: Dict[str, Any] = {
@@ -4178,19 +4251,32 @@ async def run_browser_job(
         "error": "",
         "job_meta": meta,
         "traffic": {},
+        "engine": engine,
     }
     traffic = None
     try:
         page = await session.connect()
-        log(
-            f"[브라우저] CDP 연결 OK  profile={meta.get('profile') or '-'} "
-            f"proxy={meta.get('proxy') or '-'}  현재={page.url}"
-        )
-        log(
-            f"[흐름] Octo 자동화 시작 · uuid={str(meta.get('uuid') or '')[:8] or '-'}… "
-            f"proxy_host={meta.get('proxy_host') or '-'} known_ip={meta.get('proxy_ip') or 'n/a'} "
-            f"os={meta.get('profile_os') or '-'} mobile_fp={meta.get('mobile_fp')}"
-        )
+        eng = session.engine
+        if eng in ("playwright", "pw", "chromium", "server"):
+            log(
+                f"[브라우저] Playwright 서버 엔진 시작 OK · "
+                f"proxy={meta.get('proxy') or '-'} headless={headless} 현재={page.url}"
+            )
+            log(
+                f"[흐름] Ubuntu/VPS 자동화 · 프록시 경유 Chromium · "
+                f"proxy_host={meta.get('proxy_host') or '-'} "
+                f"(Octo Local 불가 시 서버 엔진)"
+            )
+        else:
+            log(
+                f"[브라우저] CDP 연결 OK  profile={meta.get('profile') or '-'} "
+                f"proxy={meta.get('proxy') or '-'}  현재={page.url}"
+            )
+            log(
+                f"[흐름] Octo 자동화 시작 · uuid={str(meta.get('uuid') or '')[:8] or '-'}… "
+                f"proxy_host={meta.get('proxy_host') or '-'} known_ip={meta.get('proxy_ip') or 'n/a'} "
+                f"os={meta.get('profile_os') or '-'} mobile_fp={meta.get('mobile_fp')}"
+            )
 
         # Real traffic metrics (request/response counts per phase & click)
         try:
@@ -4390,7 +4476,10 @@ async def run_browser_job(
         return result
     finally:
         await session.close()
-        log("[브라우저] CDP 연결 해제 (Octo 창은 Local Stop 에서 종료)")
+        if session.engine in ("playwright", "pw", "chromium", "server"):
+            log("[브라우저] Playwright 엔진 종료")
+        else:
+            log("[브라우저] CDP 연결 해제 (Octo 창은 Local Stop 에서 종료)")
 
 
 def run_browser_job_sync(*args, **kwargs) -> Dict[str, Any]:

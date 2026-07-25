@@ -157,6 +157,7 @@
       octo_email: $("#octoEmail") ? $("#octoEmail").value.trim() : "",
       octo_password: $("#octoPassword") ? $("#octoPassword").value : "",
       octo_auto_login: $("#octoAutoLogin") ? $("#octoAutoLogin").checked : true,
+      browser_engine: $("#browserEngine") ? $("#browserEngine").value : "auto",
       proxy_type: $("#proxyType").value,
       proxy_mode: $("#proxyMode").value,
       proxy_start_index: Number($("#proxyStartIndex").value || 0),
@@ -302,6 +303,7 @@
     if ($("#octoEmail")) $("#octoEmail").value = cfg.octo_email || "";
     if ($("#octoPassword")) $("#octoPassword").value = cfg.octo_password || "";
     if ($("#octoAutoLogin")) $("#octoAutoLogin").checked = cfg.octo_auto_login !== false;
+    if ($("#browserEngine")) $("#browserEngine").value = cfg.browser_engine || "auto";
     $("#proxyType").value = cfg.proxy_type || "http";
     $("#proxyMode").value = cfg.proxy_mode || "round_robin";
     $("#proxyStartIndex").value = cfg.proxy_start_index ?? 0;

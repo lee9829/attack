@@ -332,12 +332,12 @@ async def api_test_connection(body: TestConnBody):
         n = client.test_connection()
         local_msg = ""
         local_ok = False
+        saved = load_or_default(BASE_DIR)
+        engine = str(saved.get("browser_engine") or "auto").strip().lower()
         try:
             email = (body.octo_email or "").strip()
             password = body.octo_password or ""
-            # fall back to saved config credentials
             if not email or not password:
-                saved = load_or_default(BASE_DIR)
                 email = email or str(saved.get("octo_email") or "").strip()
                 password = password or str(saved.get("octo_password") or "")
             sess = client.ensure_local_session(
@@ -352,19 +352,17 @@ async def api_test_connection(body: TestConnBody):
             )
         except OctoError as exc:
             local_msg = f"Local OFF: {exc}"
-            lb = (body.local_base or "").strip().lower()
-            if "127.0.0.1" in lb or "localhost" in lb:
-                local_msg += (
-                    " | Cloud API만으로는 프로필을 켤 수 없습니다. "
-                    "같은 서버에 Octo 클라이언트(headless)를 띄우세요 "
-                    "(deploy/setup-octo-client.sh). "
-                    "그 다음 octo_email/octo_password 로 Local 로그인."
+            if engine in ("playwright", "pw", "chromium", "server", "auto"):
+                local_msg = (
+                    "Local OFF → 서버 엔진(Playwright+프록시)으로 Google 클릭 가능. "
+                    f"(engine={engine or 'auto'})"
                 )
-        status = (
-            f"● Online — Cloud OK · {local_msg}"
-            if local_ok
-            else f"● Cloud OK · {local_msg}"
-        )
+        if local_ok:
+            status = f"● Online — Cloud OK · {local_msg}"
+        elif engine in ("playwright", "pw", "chromium", "server", "auto"):
+            status = f"● Online — Cloud OK · Server engine ready ({local_msg})"
+        else:
+            status = f"● Cloud OK · {local_msg}"
         manager.log(f"[Test] Cloud OK (profiles sample {n}) · {local_msg}")
         return {
             "ok": True,
