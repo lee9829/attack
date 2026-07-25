@@ -15,18 +15,23 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-apt-get install -y \
-  curl ca-certificates xvfb libgl1 libglib2.0-0 libgles2 libegl1 \
-  libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
-  libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
-  libgbm1 libasound2t64 libasound2 libpango-1.0-0 libcairo2 \
-  fonts-liberation fonts-noto-cjk unzip fuse libfuse2t64 libfuse2 \
-  2>/dev/null || apt-get install -y \
-  curl ca-certificates xvfb libgl1 libglib2.0-0 libgles2 libegl1 \
-  libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
-  libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
-  libgbm1 libasound2 libpango-1.0-0 libcairo2 \
-  fonts-liberation fonts-noto-cjk unzip
+# Ubuntu 24.04 uses t64 package names; fall back package-by-package
+PKGS=(
+  curl ca-certificates xvfb unzip
+  libgl1 libglib2.0-0 libgles2 libegl1
+  libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2
+  libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2
+  libgbm1 libpango-1.0-0 libcairo2
+  fonts-liberation fonts-noto-cjk
+)
+# optional packages that differ by release
+OPTIONAL=(libasound2t64 libasound2t64 libasound2 fuse3 libfuse2t64 libfuse2)
+for p in "${PKGS[@]}"; do
+  apt-get install -y "$p" || true
+done
+for p in "${OPTIONAL[@]}"; do
+  apt-get install -y "$p" 2>/dev/null || true
+done
 
 id -u "$OCTO_USER" >/dev/null 2>&1 || useradd --system --create-home --home-dir "/home/$OCTO_USER" --shell /bin/bash "$OCTO_USER"
 
