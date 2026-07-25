@@ -1304,6 +1304,20 @@ class JobRunner:
             )
 
         delay = int(self.config.get("delay_between_jobs_sec") or 15)
+        try:
+            macro_loops = int(self.config.get("macro_loops") or 1)
+        except (TypeError, ValueError):
+            macro_loops = 1
+        # 0 or negative = infinite until stop
+        infinite = macro_loops <= 0
+        if macro_loops < 0:
+            macro_loops = 0
+        try:
+            delay_loops = int(self.config.get("delay_between_loops_sec") or 30)
+        except (TypeError, ValueError):
+            delay_loops = 30
+        delay_loops = max(0, delay_loops)
+
         success = 0
         fail = 0
         cancelled = 0
@@ -1313,6 +1327,10 @@ class JobRunner:
         n_jobs = len(jobs)
         n_2fa = sum(1 for a in jobs if a.otp_secret)
         boot.info(f"2FA 시크릿 있는 계정: {n_2fa}/{n_jobs} (있으면 팝업 없이 자동 인증)")
+        if infinite:
+            boot.info("매크로 반복: 무제한 (중지 버튼까지)")
+        elif macro_loops > 1:
+            boot.info(f"매크로 반복: {macro_loops}회 · 회차 간격 {delay_loops}초")
 
         def _record(i: int, account: AccountJob, out: Optional[Dict[str, Any]], exc: Optional[BaseException]) -> None:
             nonlocal success, fail, cancelled
@@ -1393,91 +1411,125 @@ class JobRunner:
                 }
             )
 
-        # ── parallel path ──────────────────────────────────
-        if workers > 1 and not self.config.get("dry_run"):
-            boot.info(
-                f"★ 동시 실행 모드: {workers}개 Octo 프로필이 병렬로 클릭합니다 "
-                f"(stagger={stagger}s)"
-            )
-            self._emit_progress(
-                {
-                    "phase": "session_start",
-                    "total": n_jobs,
-                    "parallel": workers,
-                    "success": 0,
-                    "fail": 0,
-                }
-            )
-
-            def _worker(item: tuple) -> tuple:
-                i, account = item
-                if self.should_cancel():
-                    raise InterruptedError("사용자가 작업을 중지했습니다.")
-                # staggered start reduces Local API burst
-                if stagger > 0 and i > 1:
-                    offset = stagger * ((i - 1) % workers)
-                    end = time.time() + offset
-                    while time.time() < end:
-                        if self.should_cancel():
-                            raise InterruptedError("사용자가 작업을 중지했습니다.")
-                        time.sleep(0.1)
-                boot.sep(f"PARALLEL START {i}/{n_jobs} · {account.email or account.profile_title}")
-                out = self._run_one_tracked(account, i)
-                return i, account, out
-
-            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="octo-job") as pool:
-                futures = {
-                    pool.submit(_worker, (i, acc)): (i, acc)
-                    for i, acc in enumerate(jobs, start=1)
-                }
-                for fut in as_completed(futures):
-                    i, acc = futures[fut]
-                    try:
-                        _i, account, out = fut.result()
-                        _record(_i, account, out, None)
-                    except InterruptedError as exc:
-                        _record(i, acc, None, exc)
-                    except Exception as exc:
-                        _record(i, acc, None, exc)
-
+        loop_no = 0
+        while True:
+            loop_no += 1
+            if not infinite and loop_no > max(1, macro_loops):
+                break
             if self.should_cancel():
-                done = success + fail + cancelled
-                if done < n_jobs:
-                    cancelled += n_jobs - done
-
-        else:
-            # ── sequential (or dry-run) ─────────────────────
-            for i, account in enumerate(jobs, start=1):
-                if self.should_cancel():
-                    cancelled = n_jobs - i + 1
-                    boot.warn(f"남은 작업 취소 ({cancelled}건)")
-                    break
-
-                boot.sep(f"QUEUE {i}/{n_jobs} · {account.email or account.profile_title}")
-                try:
-                    out = self._run_one_tracked(account, i)
-                    _record(i, account, out, None)
-                except InterruptedError as exc:
-                    cancelled = n_jobs - i + 1
-                    boot.warn(str(exc))
-                    break
-                except Exception as exc:
-                    _record(i, account, None, exc)
-                    boot.info("다음 계정으로 계속 진행합니다…")
-
-                if i < n_jobs and delay > 0 and not self.config.get("dry_run"):
-                    if self.should_cancel():
-                        break
-                    boot.info(f"다음 계정까지 {delay}초 대기… ({i}/{n_jobs})")
-                    end = time.time() + delay
+                break
+            if loop_no > 1:
+                boot.sep(f"MACRO LOOP {loop_no}" + (" (무한)" if infinite else f"/{macro_loops}"))
+                if delay_loops > 0 and not self.config.get("dry_run"):
+                    boot.info(f"다음 회차까지 {delay_loops}초 대기…")
+                    end = time.time() + delay_loops
                     while time.time() < end:
                         if self.should_cancel():
                             break
                         time.sleep(0.25)
+                if self.should_cancel():
+                    break
+
+            # ── parallel path ──────────────────────────────────
+            if workers > 1 and not self.config.get("dry_run"):
+                boot.info(
+                    f"★ 동시 실행 모드: {workers}개 Octo 프로필이 병렬로 클릭합니다 "
+                    f"(stagger={stagger}s · 회차 {loop_no})"
+                )
+                self._emit_progress(
+                    {
+                        "phase": "session_start",
+                        "total": n_jobs,
+                        "parallel": workers,
+                        "loop": loop_no,
+                        "success": success,
+                        "fail": fail,
+                    }
+                )
+
+                def _worker(item: tuple) -> tuple:
+                    i, account = item
+                    if self.should_cancel():
+                        raise InterruptedError("사용자가 작업을 중지했습니다.")
+                    if stagger > 0 and i > 1:
+                        offset = stagger * ((i - 1) % workers)
+                        end = time.time() + offset
+                        while time.time() < end:
+                            if self.should_cancel():
+                                raise InterruptedError("사용자가 작업을 중지했습니다.")
+                            time.sleep(0.1)
+                    boot.sep(
+                        f"PARALLEL START {i}/{n_jobs} · {account.email or account.profile_title}"
+                    )
+                    out = self._run_one_tracked(account, i)
+                    return i, account, out
+
+                with ThreadPoolExecutor(
+                    max_workers=workers, thread_name_prefix="octo-job"
+                ) as pool:
+                    futures = {
+                        pool.submit(_worker, (i, acc)): (i, acc)
+                        for i, acc in enumerate(jobs, start=1)
+                    }
+                    for fut in as_completed(futures):
+                        i, acc = futures[fut]
+                        try:
+                            _i, account, out = fut.result()
+                            _record(_i, account, out, None)
+                        except InterruptedError as exc:
+                            _record(i, acc, None, exc)
+                        except Exception as exc:
+                            _record(i, acc, None, exc)
+
+                if self.should_cancel():
+                    done = success + fail + cancelled
+                    if done < n_jobs * loop_no:
+                        pass
+
+            else:
+                # ── sequential (or dry-run) ─────────────────────
+                for i, account in enumerate(jobs, start=1):
+                    if self.should_cancel():
+                        cancelled += n_jobs - i + 1
+                        boot.warn(f"남은 작업 취소 ({n_jobs - i + 1}건)")
+                        break
+
+                    boot.sep(
+                        f"QUEUE {i}/{n_jobs} · L{loop_no} · "
+                        f"{account.email or account.profile_title}"
+                    )
+                    try:
+                        out = self._run_one_tracked(account, i)
+                        _record(i, account, out, None)
+                    except InterruptedError as exc:
+                        cancelled += n_jobs - i + 1
+                        boot.warn(str(exc))
+                        break
+                    except Exception as exc:
+                        _record(i, account, None, exc)
+                        boot.info("다음 계정으로 계속 진행합니다…")
+
+                    if i < n_jobs and delay > 0 and not self.config.get("dry_run"):
+                        if self.should_cancel():
+                            break
+                        boot.info(f"다음 계정까지 {delay}초 대기… ({i}/{n_jobs})")
+                        end = time.time() + delay
+                        while time.time() < end:
+                            if self.should_cancel():
+                                break
+                            time.sleep(0.25)
+
+            if not infinite and loop_no >= max(1, macro_loops):
+                break
+            if self.should_cancel():
+                break
+            if self.config.get("dry_run"):
+                break  # dry run once
 
         boot.sep("SESSION DONE")
         boot.info(
-            f"성공={success} 실패={fail} 취소={cancelled} 총={n_jobs} 동시={workers}"
+            f"성공={success} 실패={fail} 취소={cancelled} "
+            f"계정큐={n_jobs} 회차={loop_no} 동시={workers}"
         )
         # stable order in history for logs
         history.sort(key=lambda h: int(h.get("job") or 0))

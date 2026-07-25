@@ -13,16 +13,16 @@
   };
 
   const titles = {
-    home: ["홈 · 원클릭", "토큰 · 계정 · 키워드 · SWARM → Octo 연동"],
-    ops: ["⚔ OPS 콘솔", "자사 전용 RECON · HAMMER · SWARM"],
-    proxies: ["프록시", "붙여넣기 · 검증 · 로테이션 모드"],
-    accounts: ["계정 · Google", "프로필 · 자동 로그인 · 2FA"],
-    search: ["검색 · 키워드", "키워드 + path/URL 정규식 매칭"],
-    bulk: ["대량 사이트", "수천~수만 자사 URL·도메인 붙여넣기"],
-    cookies: ["쿠키 주입", "자사 사이트 세션 테스트 · Octo 컨텍스트"],
-    settings: ["동시실행 · 설정", "병렬 프로필 · API · Octo Local"],
-    logs: ["로그", "실시간 실행 로그 (동시 작업 포함)"],
-    help: ["사용법", "OPS · 동시 클릭 · 쿠키 · Octo"],
+    home: ["매크로 시작", "구글 로그인 · 검색 · 내 사이트 클릭 · 반복"],
+    ops: ["OPS (고급)", "자사 정찰 · 부하 (일반 사용 불필요)"],
+    proxies: ["프록시", "host:port:id:pw 붙여넣기"],
+    accounts: ["Google 계정", "이메일 · 비밀번호 · 2FA"],
+    search: ["검색 상세", "정규식 · 경로 · 체류 시간"],
+    bulk: ["대량 URL", "여러 사이트 URL 일괄"],
+    cookies: ["쿠키", "세션 쿠키 주입"],
+    settings: ["고급 설정", "엔진 · 동시 실행 · API"],
+    logs: ["실행 로그", "실시간 진행 상황"],
+    help: ["사용법", "PC 에이전트 + 매크로"],
   };
 
   function toast(msg, type = "ok") {
@@ -157,8 +157,8 @@
       octo_email: $("#octoEmail") ? $("#octoEmail").value.trim() : "",
       octo_password: $("#octoPassword") ? $("#octoPassword").value : "",
       octo_auto_login: $("#octoAutoLogin") ? $("#octoAutoLogin").checked : true,
-      browser_engine: $("#browserEngine") ? $("#browserEngine").value : "auto",
-      proxy_type: $("#proxyType").value,
+      browser_engine: $("#browserEngine") ? $("#browserEngine").value : "agent",
+      proxy_type: ($("#proxyType")?.value || "http"),
       proxy_mode: $("#proxyMode").value,
       proxy_start_index: Number($("#proxyStartIndex").value || 0),
       proxies_text: proxiesText,
@@ -168,9 +168,13 @@
       create_profile_if_missing: $("#createMissing").checked,
       headless: $("#headless").checked,
       start_timeout_sec: Number($("#startTimeout").value || 120),
-      delay_between_jobs_sec: Number($("#delayJobs").value || 15),
-      stop_profile_after_job: $("#stopAfter").checked,
-      max_jobs: Number($("#maxJobs").value || 0),
+      delay_between_jobs_sec: Number(
+        $("#delayJobsHome")?.value || $("#delayJobs")?.value || 20
+      ),
+      macro_loops: Number($("#macroLoops")?.value ?? 1),
+      delay_between_loops_sec: Number($("#delayLoops")?.value || 60),
+      stop_profile_after_job: $("#stopAfter") ? $("#stopAfter").checked : true,
+      max_jobs: Number($("#maxJobs")?.value || 0),
       parallel_jobs: parallel,
       stagger_start_sec: Number($("#staggerStart").value || 0),
       banner_text: bannerText,
@@ -209,10 +213,10 @@
       match_mobile_ip: $("#matchMobileIp") ? $("#matchMobileIp").checked : true,
       traffic_metrics: $("#trafficMetrics") ? $("#trafficMetrics").checked : true,
       ops: {
-        enabled: $("#opsEnabled") ? $("#opsEnabled").checked : true,
-        mode: $("#opsMode")?.value || "swarm",
-        browser_preset: $("#opsBrowserPreset")?.value || "blitz",
-        run_http_ops: $("#opsRunHttp") ? $("#opsRunHttp").checked : true,
+        enabled: $("#opsEnabled") ? $("#opsEnabled").checked : false,
+        mode: $("#opsMode")?.value || "browser",
+        browser_preset: $("#opsBrowserPreset")?.value || "normal",
+        run_http_ops: $("#opsRunHttp") ? $("#opsRunHttp").checked : false,
         skip_hammer: $("#opsSkipHammer") ? $("#opsSkipHammer").checked : false,
         path_workers: Number($("#opsPathWorkers")?.value || 16),
         hammer_requests: Number($("#opsHammerReq")?.value || 100),
@@ -227,8 +231,12 @@
         extra_paths_text: $("#opsExtraPaths")?.value || "",
       },
       google_login: {
-        enabled: $("#gEnabled").checked,
-        mode: $("#gMode").value,
+        enabled: $("#gEnabledHome")
+          ? $("#gEnabledHome").checked
+          : $("#gEnabled")
+            ? $("#gEnabled").checked
+            : true,
+        mode: $("#gMode")?.value || "auto",
         login_url: "https://accounts.google.com/",
         success_url_contains: [
           "myaccount.google.com",
@@ -313,10 +321,15 @@
     $("#proxyCount").textContent = `${cfg.proxies_count || 0}개`;
 
     const g = cfg.google_login || {};
-    $("#gEnabled").checked = !!g.enabled;
-    $("#gMode").value = g.mode || "auto";
+    if ($("#gEnabled")) $("#gEnabled").checked = g.enabled !== false;
+    if ($("#gEnabledHome")) $("#gEnabledHome").checked = g.enabled !== false;
+    if ($("#gMode")) $("#gMode").value = g.mode || "auto";
     const otp = g.otp_fetch || {};
-    $("#otpEnabled").checked = otp.enabled !== false;
+    if ($("#otpEnabled")) $("#otpEnabled").checked = otp.enabled !== false;
+    if ($("#macroLoops")) $("#macroLoops").value = cfg.macro_loops ?? 1;
+    if ($("#delayLoops")) $("#delayLoops").value = cfg.delay_between_loops_sec ?? 60;
+    if ($("#delayJobsHome"))
+      $("#delayJobsHome").value = cfg.delay_between_jobs_sec ?? 20;
 
     renderAccounts(cfg.accounts_rows || []);
     // rebuild bulk from rows
@@ -624,20 +637,23 @@
   }
 
   async function refreshAgentStatus() {
-    const el = $("#agentStatus");
-    if (!el) return;
+    const els = [$("#agentStatus"), $("#agentStatusHome")].filter(Boolean);
+    if (!els.length) return;
     try {
       const data = await api("/api/agent/status");
       const a = data.agent || {};
-      if (a.online) {
-        el.textContent = `온라인 (${a.name || "windows"})`;
-        el.style.color = "#3dd68c";
-      } else {
-        el.textContent = "오프라인 — PC에서 start_agent.bat 실행";
-        el.style.color = "#f5a524";
-      }
+      const text = a.online
+        ? `온라인 (${a.name || "PC"}) · 매크로 가능`
+        : "오프라인 — OctoAgent.exe 를 실행하세요";
+      const color = a.online ? "#3dd68c" : "#f5a524";
+      els.forEach((el) => {
+        el.textContent = text;
+        el.style.color = color;
+      });
     } catch (e) {
-      el.textContent = "상태 확인 실패";
+      els.forEach((el) => {
+        el.textContent = "상태 확인 실패";
+      });
     }
   }
 
@@ -768,8 +784,10 @@
 
   function setRunning(on) {
     state.running = on;
-    $("#btnStart").disabled = on;
-    $("#btnDry").disabled = on;
+    if ($("#btnStart")) $("#btnStart").disabled = on;
+    if ($("#btnStartHome")) $("#btnStartHome").disabled = on;
+    if ($("#btnStopHome")) $("#btnStopHome").disabled = !on;
+    if ($("#btnDry")) $("#btnDry").disabled = on;
     $("#btnStop").disabled = !on;
   }
 
@@ -872,10 +890,24 @@
     $$(".nav-btn").forEach((b) =>
       b.addEventListener("click", () => showPage(b.dataset.page))
     );
+    // home macro buttons mirror topbar
+    $("#btnStartHome")?.addEventListener("click", () => $("#btnStart")?.click());
+    $("#btnStopHome")?.addEventListener("click", () => $("#btnStop")?.click());
+    // keep delay fields in sync
+    const syncDelay = () => {
+      const v = Number($("#delayJobsHome")?.value || $("#delayJobs")?.value || 20);
+      if ($("#delayJobsHome")) $("#delayJobsHome").value = v;
+      if ($("#delayJobs")) $("#delayJobs").value = v;
+    };
+    $("#delayJobsHome")?.addEventListener("change", syncDelay);
+    $("#delayJobs")?.addEventListener("change", syncDelay);
+    $("#gEnabledHome")?.addEventListener("change", () => {
+      if ($("#gEnabled")) $("#gEnabled").checked = $("#gEnabledHome").checked;
+    });
     $("#btnSave").onclick = saveConfig;
     $("#btnTest").onclick = testConnection;
-    $("#btnStart").onclick = () => startJobs(false);
-    $("#btnDry").onclick = () => startJobs(true);
+    if ($("#btnStart")) $("#btnStart").onclick = () => startJobs(false);
+    if ($("#btnDry")) $("#btnDry").onclick = () => startJobs(true);
     $("#btnStop").onclick = stopJobs;
     $("#btnValidateProxies").onclick = () => validateProxies(true);
     $("#btnValidateProxies2").onclick = () => validateProxies(false);

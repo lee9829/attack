@@ -88,6 +88,10 @@ body {
   font-size: 0.92rem;
 }
 .nav-btn:hover { background: var(--hover); color: var(--text); }
+.nav-btn.nav-adv {
+  opacity: 0.65;
+  font-size: 0.82rem;
+}
 .nav-btn.active {
   background: rgba(61, 214, 140, 0.12);
   border-color: rgba(61, 214, 140, 0.35);
