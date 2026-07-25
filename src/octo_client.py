@@ -125,7 +125,8 @@ class OctoClient:
         search: str = "",
         page_len: int = 100,
         *,
-        fields: str = "title,description,proxy,status,last_active,tags,os",
+        # Octo Cloud allows only documented list fields (no "os" — that is inside fingerprint)
+        fields: str = "title,description,proxy,status,last_active,tags,folder",
         ordering: str = "title",
     ) -> List[Dict[str, Any]]:
         page = 0
