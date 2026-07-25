@@ -191,6 +191,76 @@ body {
   .control-deck { grid-template-columns: 1fr; }
 }
 
+/* battle log + dynamic lists */
+.battle-card { margin-bottom: 1rem; }
+.battle-log {
+  margin-top: 0.6rem;
+  max-height: 320px;
+  overflow: auto;
+  background: #07090d;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.5rem 0.65rem;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+.blog-line {
+  display: grid;
+  grid-template-columns: 4.2rem 4.2rem 1fr;
+  gap: 0.4rem;
+  padding: 0.15rem 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.blog-t { color: #6a7385; }
+.blog-tag {
+  color: #9aa3b5;
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  padding-top: 0.12rem;
+}
+.blog-m { word-break: break-all; color: var(--text); }
+.kind-profile .blog-tag { color: #7eb6ff; }
+.kind-proxy .blog-tag { color: #f0b429; }
+.kind-search .blog-tag { color: #c4a5ff; }
+.kind-click .blog-tag { color: #3dd68c; }
+.kind-google .blog-tag { color: #5b9dff; }
+.kind-err .blog-m { color: #ff6b81; }
+.kind-ok .blog-m { color: #7dffa3; }
+.battle-stats { margin-top: 0.65rem; }
+.stat-chip {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  background: #121820;
+  border: 1px solid var(--border);
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.stat-chip b { color: var(--text); font-weight: 700; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dyn-list { display: flex; flex-direction: column; gap: 0.35rem; margin: 0.5rem 0; }
+.dyn-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.35rem;
+  align-items: center;
+}
+.dyn-row input {
+  width: 100%;
+  background: var(--input);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+}
+.log-filter.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.hidden { display: none !important; }
+
 .nav-btn.active {
   background: rgba(61, 214, 140, 0.12);
   border-color: rgba(61, 214, 140, 0.35);

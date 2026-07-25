@@ -68,53 +68,206 @@
     $("#pageHint").textContent = h;
   }
 
-  // ── accounts table ──────────────────────────────────────
+  // ── accounts table (home primary, accounts page mirrors) ──
   function accountRowsFromTable() {
-    return $$("#accTable tbody tr").map((tr) => {
-      const inputs = $$("input", tr);
-      return {
-        email: inputs[0]?.value?.trim() || "",
-        password: inputs[1]?.value?.trim() || "",
-        profile_title: inputs[2]?.value?.trim() || "",
-        otp_secret: inputs[3]?.value?.trim() || "",
-        notes: inputs[4]?.value?.trim() || "",
-        otp_url: "",
+    const tb = $("#accTableHome tbody") || $("#accTable tbody");
+    if (!tb) return [];
+    return $$("tr", tb)
+      .map((tr) => {
+        const inputs = $$("input", tr);
+        return {
+          email: inputs[0]?.value?.trim() || "",
+          password: inputs[1]?.value?.trim() || "",
+          profile_title: inputs[2]?.value?.trim() || "",
+          otp_secret: inputs[3]?.value?.trim() || "",
+          notes: inputs[4]?.value?.trim() || "",
+          otp_url: "",
+        };
+      })
+      .filter((r) => r.email || r.profile_title);
+  }
+
+  function _fillAccTbody(tb, rows) {
+    if (!tb) return;
+    tb.innerHTML = "";
+    rows.forEach((r) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><input type="text" value="${esc(r.email || "")}" placeholder="email" /></td>
+        <td><input type="password" value="${esc(r.password || "")}" placeholder="password" /></td>
+        <td><input type="text" value="${esc(r.profile_title || "")}" placeholder="Octo 프로필" /></td>
+        <td><input type="text" value="${esc(r.otp_secret || "")}" placeholder="2FA" /></td>
+        <td><input type="text" value="${esc(r.notes || "")}" placeholder="메모" /></td>
+        <td><button type="button" class="btn sm ghost btn-del">×</button></td>`;
+      $(".btn-del", tr).onclick = () => {
+        tr.remove();
+        // re-render both from remaining home rows
+        const left = accountRowsFromTable();
+        renderAccounts(left.length ? left : [{}]);
       };
-    }).filter((r) => r.email || r.profile_title);
+      $$("input", tr).forEach((inp) =>
+        inp.addEventListener("input", updateAccountsPreview)
+      );
+      tb.appendChild(tr);
+    });
   }
 
   function renderAccounts(rows) {
-    const tb = $("#accTable tbody");
-    tb.innerHTML = "";
-    (rows || []).forEach((r) => addAccountRow(r));
-    if (!rows?.length) addAccountRow({});
+    const list = rows?.length ? rows : [{}];
+    _fillAccTbody($("#accTableHome tbody"), list);
+    _fillAccTbody($("#accTable tbody"), list);
     updateAccountsPreview();
   }
 
   function addAccountRow(r = {}) {
-    const tb = $("#accTable tbody");
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td><input type="text" value="${esc(r.email || "")}" /></td>
-      <td><input type="password" value="${esc(r.password || "")}" /></td>
-      <td><input type="text" value="${esc(r.profile_title || "")}" /></td>
-      <td><input type="text" value="${esc(r.otp_secret || "")}" /></td>
-      <td><input type="text" value="${esc(r.notes || "")}" /></td>
-      <td><button type="button" class="btn sm ghost btn-del">×</button></td>
-    `;
-    $(".btn-del", tr).onclick = () => {
-      tr.remove();
-      updateAccountsPreview();
-    };
-    $$("input", tr).forEach((inp) => inp.addEventListener("input", updateAccountsPreview));
-    tb.appendChild(tr);
+    const rows = accountRowsFromTable();
+    rows.push({
+      email: r.email || "",
+      password: r.password || "",
+      profile_title: r.profile_title || "",
+      otp_secret: r.otp_secret || "",
+      notes: r.notes || "",
+    });
+    renderAccounts(rows);
   }
 
   function updateAccountsPreview() {
     const rows = accountRowsFromTable();
-    $("#accountsPreview").textContent = rows.length
-      ? rows.map((r) => `${r.email || "-"} · ${r.profile_title || "-"} · 2FA=${r.otp_secret ? "Y" : "N"}`).join("\n")
-      : "계정 없음";
+    const el = $("#accountsPreview");
+    if (!el) return;
+    el.textContent = rows.length
+      ? `${rows.length}개 · ` +
+        rows
+          .map(
+            (r) =>
+              `${r.email || "-"} / ${r.profile_title || "-"} / 2FA=${r.otp_secret ? "Y" : "N"}`
+          )
+          .join(" · ")
+      : "계정 없음 — + 계정 추가";
+  }
+
+  // ── keywords / sites dynamic lists (infinite add/delete) ──
+  function syncKwTextarea() {
+    const kws = $$("#kwList .dyn-row input")
+      .map((i) => i.value.trim())
+      .filter(Boolean);
+    if ($("#keywordsText")) $("#keywordsText").value = kws.join("\n");
+    if ($("#keyword")) $("#keyword").value = kws.join(" / ");
+  }
+
+  function syncSitesTextarea() {
+    const sites = $$("#siteList .dyn-row input")
+      .map((i) => i.value.trim())
+      .filter(Boolean);
+    if ($("#domainsText")) $("#domainsText").value = sites.join("\n");
+    if ($("#targetDomain")) $("#targetDomain").value = sites[0] || "";
+  }
+
+  function addDynRow(listEl, value, placeholder) {
+    if (!listEl) return;
+    const row = document.createElement("div");
+    row.className = "dyn-row";
+    row.innerHTML = `
+      <input type="text" value="${esc(value || "")}" placeholder="${esc(placeholder || "")}" />
+      <button type="button" class="btn sm ghost dyn-del">×</button>`;
+    $(".dyn-del", row).onclick = () => {
+      row.remove();
+      syncKwTextarea();
+      syncSitesTextarea();
+    };
+    $("input", row).addEventListener("input", () => {
+      syncKwTextarea();
+      syncSitesTextarea();
+    });
+    listEl.appendChild(row);
+  }
+
+  function renderKeywords(list) {
+    const box = $("#kwList");
+    if (!box) return;
+    box.innerHTML = "";
+    const arr = (list || []).filter(Boolean);
+    if (!arr.length) arr.push("");
+    arr.forEach((k) => addDynRow(box, k, "검색어"));
+    syncKwTextarea();
+  }
+
+  function renderSites(list) {
+    const box = $("#siteList");
+    if (!box) return;
+    box.innerHTML = "";
+    const arr = (list || []).filter(Boolean);
+    if (!arr.length) arr.push("");
+    arr.forEach((s) => addDynRow(box, s, "mysite.com"));
+    syncSitesTextarea();
+  }
+
+  // ── battle log (detail feed) ─────────────────────────────
+  let battleFilter = "all";
+  const battleBuf = [];
+
+  function classifyLog(msg) {
+    const m = String(msg || "");
+    if (/PROFILE|프로필|uuid|Cloud 검색|프록시 주입/i.test(m)) return "profile";
+    if (/PROXY|프록시|출구 IP|출구IP|connection_data|proxy=/i.test(m)) return "proxy";
+    if (/SEARCH|검색|keyword|SERP/i.test(m)) return "search";
+    if (/클릭|click|matched|방문|CTA|banner|site_click/i.test(m)) return "click";
+    if (/Google|구글|로그인|2FA|TOTP|otp/i.test(m)) return "google";
+    if (/ERR|오류|실패|Error/i.test(m)) return "err";
+    if (/OK|성공|완료/i.test(m)) return "ok";
+    return "other";
+  }
+
+  function updateBattleStats(msg) {
+    const m = String(msg || "");
+    const ip =
+      m.match(/출구 IP\s*=\s*([0-9.]+)/i) ||
+      m.match(/출구IP[=:]\s*([0-9.]+)/i) ||
+      m.match(/\b(\d{1,3}(?:\.\d{1,3}){3})\b/);
+    if (ip && $("#statIp")) $("#statIp").textContent = ip[1];
+    const prof =
+      m.match(/프로필[=:']+\s*([^\s'·]+)/i) ||
+      m.match(/profile[=:']+\s*([^\s'·]+)/i) ||
+      m.match(/title='([^']+)'/i);
+    if (prof && $("#statProfile")) $("#statProfile").textContent = prof[1].slice(0, 40);
+    const kw = m.match(/keyword='([^']+)'/i) || m.match(/검색어[=:']+\s*([^\s']+)/i);
+    if (kw && $("#statKw")) $("#statKw").textContent = kw[1].slice(0, 40);
+    const url = m.match(/https?:\/\/[^\s\]"'<>]+/i);
+    if (url && /클릭|방문|matched|site/i.test(m) && $("#statClick")) {
+      $("#statClick").textContent = url[0].slice(0, 60);
+    }
+    if (/구글|Google|로그인/i.test(m) && $("#statGoogle")) {
+      if (/OK|성공|완료/i.test(m)) $("#statGoogle").textContent = "OK";
+      else if (/실패|ERR|오류/i.test(m)) $("#statGoogle").textContent = "실패";
+      else $("#statGoogle").textContent = "진행";
+    }
+  }
+
+  function appendBattleLine(entry) {
+    const msg = entry.msg || entry;
+    const kind = classifyLog(msg);
+    battleBuf.push({ msg, kind, ts: entry.ts || Date.now() / 1000, id: entry.id });
+    if (battleBuf.length > 800) battleBuf.splice(0, battleBuf.length - 800);
+    updateBattleStats(msg);
+    paintBattleLog();
+  }
+
+  function paintBattleLog() {
+    const box = $("#battleLog");
+    if (!box) return;
+    const lines = battleBuf.filter(
+      (x) => battleFilter === "all" || x.kind === battleFilter
+    );
+    const slice = lines.slice(-250);
+    box.innerHTML = slice
+      .map((x) => {
+        const t = x.ts
+          ? new Date(x.ts * 1000).toLocaleTimeString("ko-KR", { hour12: false })
+          : "";
+        return `<div class="blog-line kind-${x.kind}"><span class="blog-t">${t}</span><span class="blog-tag">${x.kind}</span><span class="blog-m">${esc(x.msg)}</span></div>`;
+      })
+      .join("");
+    box.scrollTop = box.scrollHeight;
   }
 
   function esc(s) {
@@ -126,13 +279,21 @@
 
   // ── config collect / apply ──────────────────────────────
   function collectConfig() {
-    const keywordsText = $("#keywordsText").value.trim() || $("#keyword").value.trim();
-    const domainsText = $("#domainsText").value.trim() || $("#targetDomain").value.trim();
-    const proxiesText = ($("#proxiesText").value.trim() || $("#proxiesQuick").value.trim());
-    const bannerText = $("#bannerText").value.trim();
-    const directUrl = $("#directUrl").value.trim();
+    syncKwTextarea();
+    syncSitesTextarea();
+    const keywordsText =
+      ($("#keywordsText")?.value || "").trim() ||
+      ($("#keyword")?.value || "").trim();
+    const domainsText =
+      ($("#domainsText")?.value || "").trim() ||
+      ($("#targetDomain")?.value || "").trim();
+    const proxiesText =
+      ($("#proxiesText")?.value || "").trim() ||
+      ($("#proxiesQuick")?.value || "").trim();
+    const bannerText = ($("#bannerText")?.value || "").trim();
+    const directUrl = ($("#directUrl")?.value || "").trim();
     const parallel =
-      Number($("#parallelJobs").value || $("#parallelJobsHome").value || 1) || 1;
+      Number($("#parallelJobs")?.value || $("#parallelJobsHome")?.value || 1) || 1;
 
     // keep home/settings parallel fields in sync
     if ($("#parallelJobsHome") && $("#parallelJobs")) {
@@ -157,24 +318,31 @@
       (cookieDomain ? `https://${cookieDomain}/` : "");
 
     return {
-      octo_api_token: $("#token").value.trim(),
-      cloud_base: $("#cloudBase").value.trim(),
-      local_base: $("#localBase").value.trim(),
+      octo_api_token: ($("#token")?.value || "").trim(),
+      cloud_base: (
+        $("#cloudBase")?.value || "https://app.octobrowser.net/api/v2/automation"
+      ).trim(),
+      local_base: (
+        $("#localBase")?.value || "http://127.0.0.1:58888/api"
+      ).trim(),
       octo_email: $("#octoEmail") ? $("#octoEmail").value.trim() : "",
       octo_password: $("#octoPassword") ? $("#octoPassword").value : "",
       octo_auto_login: $("#octoAutoLogin") ? $("#octoAutoLogin").checked : true,
-      // 통제판 기본: 항상 PC Octo 에이전트 (디아블로 오토식 웹 통제)
       browser_engine: $("#browserEngine")?.value || "agent",
       proxy_type: ($("#proxyType")?.value || "http"),
-      proxy_mode: $("#proxyMode").value,
-      proxy_start_index: Number($("#proxyStartIndex").value || 0),
+      proxy_mode: $("#proxyMode")?.value || "round_robin",
+      proxy_start_index: Number($("#proxyStartIndex")?.value || 0),
       proxies_text: proxiesText,
       accounts_rows: accountRowsFromTable(),
-      accounts_bulk: $("#accountsBulk").value,
-      reuse_existing_profiles: $("#reuseProfiles").checked,
-      create_profile_if_missing: $("#createMissing").checked,
-      headless: $("#headless").checked,
-      start_timeout_sec: Number($("#startTimeout").value || 120),
+      accounts_bulk: $("#accountsBulk")?.value || "",
+      reuse_existing_profiles: $("#reuseProfiles")
+        ? $("#reuseProfiles").checked
+        : true,
+      create_profile_if_missing: $("#createMissing")
+        ? $("#createMissing").checked
+        : true,
+      headless: $("#headless") ? $("#headless").checked : false,
+      start_timeout_sec: Number($("#startTimeout")?.value || 120),
       delay_between_jobs_sec: Number(
         $("#delayJobsHome")?.value || $("#delayJobs")?.value || 20
       ),
@@ -183,17 +351,19 @@
       stop_profile_after_job: $("#stopAfter") ? $("#stopAfter").checked : true,
       max_jobs: Number($("#maxJobs")?.value || 0),
       parallel_jobs: parallel,
-      stagger_start_sec: Number($("#staggerStart").value || 0),
+      stagger_start_sec: Number($("#staggerStart")?.value || 0),
       banner_text: bannerText,
-      cookies_text: $("#cookiesText").value,
+      cookies_text: $("#cookiesText")?.value || "",
       cookies: {
-        enabled: $("#cookieEnabled").checked,
-        when: $("#cookieWhen").value || "on_site",
+        enabled: $("#cookieEnabled") ? $("#cookieEnabled").checked : false,
+        when: $("#cookieWhen")?.value || "on_site",
         domain: cookieDomain,
         url: cookieUrl,
         warm_url: cookieUrl,
-        warm_navigate: $("#cookieWarm").checked,
-        clear_first: $("#cookieClearFirst").checked,
+        warm_navigate: $("#cookieWarm") ? $("#cookieWarm").checked : true,
+        clear_first: $("#cookieClearFirst")
+          ? $("#cookieClearFirst").checked
+          : false,
         reload_on_site: $("#cookieReload").checked,
         text: $("#cookiesText").value,
         json: $("#cookiesText").value,
@@ -264,13 +434,13 @@
       },
       bulk_urls_text: ($("#bulkUrlsText")?.value || "").trim(),
       search_flow: {
-        enabled: $("#searchEnabled").checked,
+        enabled: $("#searchEnabled") ? $("#searchEnabled").checked : true,
         purpose: "own_site_qa",
-        keyword: $("#keyword").value.trim(),
+        keyword: ($("#keyword")?.value || "").trim(),
         keywords_text: keywordsText,
         keyword_fallback: true,
         stop_on_first_keyword_hit: true,
-        target_domain: $("#targetDomain").value.trim(),
+        target_domain: ($("#targetDomain")?.value || "").trim(),
         domains_text: domainsText,
         bulk_urls_text: ($("#bulkUrlsText")?.value || "").trim(),
         path_regex_text:
@@ -312,20 +482,21 @@
 
   function applyConfig(cfg) {
     state.config = cfg;
-    $("#token").value = cfg.octo_api_token || "";
-    $("#cloudBase").value = cfg.cloud_base || "";
-    $("#localBase").value = cfg.local_base || "";
+    if ($("#token")) $("#token").value = cfg.octo_api_token || "";
+    if ($("#cloudBase")) $("#cloudBase").value = cfg.cloud_base || "";
+    if ($("#localBase")) $("#localBase").value = cfg.local_base || "";
     if ($("#octoEmail")) $("#octoEmail").value = cfg.octo_email || "";
     if ($("#octoPassword")) $("#octoPassword").value = cfg.octo_password || "";
     if ($("#octoAutoLogin")) $("#octoAutoLogin").checked = cfg.octo_auto_login !== false;
-    if ($("#browserEngine")) $("#browserEngine").value = cfg.browser_engine || "auto";
-    $("#proxyType").value = cfg.proxy_type || "http";
-    $("#proxyMode").value = cfg.proxy_mode || "round_robin";
-    $("#proxyStartIndex").value = cfg.proxy_start_index ?? 0;
+    if ($("#browserEngine")) $("#browserEngine").value = cfg.browser_engine || "agent";
+    if ($("#proxyType")) $("#proxyType").value = cfg.proxy_type || "http";
+    if ($("#proxyMode")) $("#proxyMode").value = cfg.proxy_mode || "round_robin";
+    if ($("#proxyStartIndex")) $("#proxyStartIndex").value = cfg.proxy_start_index ?? 0;
     const px = cfg.proxies_text || "";
-    $("#proxiesText").value = px;
-    $("#proxiesQuick").value = px;
-    $("#proxyCount").textContent = `${cfg.proxies_count || 0}개`;
+    if ($("#proxiesText")) $("#proxiesText").value = px;
+    if ($("#proxiesQuick")) $("#proxiesQuick").value = px;
+    if ($("#proxyCount"))
+      $("#proxyCount").textContent = `${cfg.proxies_count || px.split("\n").filter((l) => l.trim()).length || 0}개`;
 
     const g = cfg.google_login || {};
     if ($("#gEnabled")) $("#gEnabled").checked = g.enabled !== false;
@@ -333,25 +504,45 @@
     if ($("#gMode")) $("#gMode").value = g.mode || "auto";
     const otp = g.otp_fetch || {};
     if ($("#otpEnabled")) $("#otpEnabled").checked = otp.enabled !== false;
-    if ($("#macroLoops")) $("#macroLoops").value = cfg.macro_loops ?? 1;
-    if ($("#delayLoops")) $("#delayLoops").value = cfg.delay_between_loops_sec ?? 60;
+    if ($("#macroLoops")) $("#macroLoops").value = cfg.macro_loops ?? 0;
+    if ($("#delayLoops")) $("#delayLoops").value = cfg.delay_between_loops_sec ?? 45;
     if ($("#delayJobsHome"))
-      $("#delayJobsHome").value = cfg.delay_between_jobs_sec ?? 20;
+      $("#delayJobsHome").value = cfg.delay_between_jobs_sec ?? 15;
 
     renderAccounts(cfg.accounts_rows || []);
-    // rebuild bulk from rows
     const bulk = (cfg.accounts_rows || [])
       .filter((r) => r.email)
       .map((r) => [r.email, r.password || "", r.otp_secret || ""].join("|"))
       .join("\n");
-    $("#accountsBulk").value = bulk;
+    if ($("#accountsBulk")) $("#accountsBulk").value = bulk;
 
     const sf = cfg.search_flow || {};
-    $("#searchEnabled").checked = sf.enabled !== false;
-    $("#keyword").value = sf.keyword || "";
-    $("#keywordsText").value = sf.keywords_text || (sf.keywords || []).join("\n");
-    $("#targetDomain").value = sf.target_domain || "";
-    $("#domainsText").value = sf.domains_text || (sf.allowed_domains || []).join("\n");
+    if ($("#searchEnabled")) $("#searchEnabled").checked = sf.enabled !== false;
+    const kwList =
+      (sf.keywords_text || "").split("\n").map((s) => s.trim()).filter(Boolean).length
+        ? (sf.keywords_text || "").split("\n").map((s) => s.trim()).filter(Boolean)
+        : sf.keywords?.length
+          ? sf.keywords
+          : (sf.keyword || "")
+              .split(/[\/\n]/)
+              .map((s) => s.trim())
+              .filter(Boolean);
+    const siteList =
+      (sf.domains_text || "").split("\n").map((s) => s.trim()).filter(Boolean).length
+        ? (sf.domains_text || "").split("\n").map((s) => s.trim()).filter(Boolean)
+        : sf.allowed_domains?.length
+          ? sf.allowed_domains
+          : sf.target_domain
+            ? [sf.target_domain]
+            : [];
+    renderKeywords(kwList);
+    renderSites(siteList);
+    if ($("#keyword")) $("#keyword").value = sf.keyword || kwList.join(" / ");
+    if ($("#keywordsText"))
+      $("#keywordsText").value = sf.keywords_text || kwList.join("\n");
+    if ($("#targetDomain")) $("#targetDomain").value = sf.target_domain || siteList[0] || "";
+    if ($("#domainsText"))
+      $("#domainsText").value = sf.domains_text || siteList.join("\n");
     const pathRx =
       sf.path_regex_text ||
       (sf.path_regexes || []).join("\n") ||
@@ -901,12 +1092,13 @@
     if (!logs?.length) return;
     const view = $("#logView");
     const atBottom =
-      view.scrollHeight - view.scrollTop - view.clientHeight < 80;
+      view && view.scrollHeight - view.scrollTop - view.clientHeight < 80;
     for (const line of logs) {
-      state.lastLogId = Math.max(state.lastLogId, line.id);
-      view.textContent += (view.textContent ? "\n" : "") + line.msg;
+      state.lastLogId = Math.max(state.lastLogId, line.id || 0);
+      if (view) view.textContent += (view.textContent ? "\n" : "") + line.msg;
+      appendBattleLine(line);
     }
-    if (atBottom) view.scrollTop = view.scrollHeight;
+    if (view && atBottom) view.scrollTop = view.scrollHeight;
   }
 
   function startEventStream() {
@@ -937,6 +1129,31 @@
     // home macro buttons mirror topbar
     $("#btnStartHome")?.addEventListener("click", () => $("#btnStart")?.click());
     $("#btnStopHome")?.addEventListener("click", () => $("#btnStop")?.click());
+    $("#btnAddAccHome")?.addEventListener("click", () => addAccountRow({}));
+    $("#btnClearAccHome")?.addEventListener("click", () => renderAccounts([{}]));
+    $("#btnAddKw")?.addEventListener("click", () => {
+      addDynRow($("#kwList"), "", "검색어");
+      syncKwTextarea();
+    });
+    $("#btnAddSite")?.addEventListener("click", () => {
+      addDynRow($("#siteList"), "", "mysite.com");
+      syncSitesTextarea();
+    });
+    $$(".log-filter").forEach((b) =>
+      b.addEventListener("click", () => {
+        $$(".log-filter").forEach((x) => x.classList.remove("active"));
+        b.classList.add("active");
+        battleFilter = b.dataset.logf || "all";
+        paintBattleLog();
+      })
+    );
+    $("#btnClearBattleLog")?.addEventListener("click", () => {
+      battleBuf.length = 0;
+      paintBattleLog();
+      ["statProfile", "statIp", "statClick", "statKw", "statGoogle"].forEach((id) => {
+        if ($("#" + id)) $("#" + id).textContent = "—";
+      });
+    });
     // keep delay fields in sync
     const syncDelay = () => {
       const v = Number($("#delayJobsHome")?.value || $("#delayJobs")?.value || 20);

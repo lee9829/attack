@@ -115,33 +115,85 @@
           </div>
         </div>
 
+        <!-- LIVE BATTLE LOG: profile / IP / clicks -->
+        <div class="card battle-card">
+          <div class="row gap wrap" style="justify-content:space-between;align-items:center">
+            <h2 style="margin:0">실시간 활동 로그 (프로필 · IP · 클릭)</h2>
+            <div class="row gap wrap">
+              <button type="button" class="btn sm ghost log-filter active" data-logf="all">전체</button>
+              <button type="button" class="btn sm ghost log-filter" data-logf="profile">프로필</button>
+              <button type="button" class="btn sm ghost log-filter" data-logf="proxy">IP/프록시</button>
+              <button type="button" class="btn sm ghost log-filter" data-logf="search">검색</button>
+              <button type="button" class="btn sm ghost log-filter" data-logf="click">클릭</button>
+              <button type="button" class="btn sm ghost log-filter" data-logf="google">구글로그인</button>
+              <button type="button" class="btn sm ghost" id="btnClearBattleLog">로그 지우기</button>
+            </div>
+          </div>
+          <p class="hint">Octo 창에서 일어나는 일을 사이트에서 그대로 봅니다 · 필터로 구분</p>
+          <div id="battleLog" class="battle-log" aria-live="polite"></div>
+          <div class="row gap wrap battle-stats" id="battleStats">
+            <span class="stat-chip">프로필 <b id="statProfile">—</b></span>
+            <span class="stat-chip">출구 IP <b id="statIp">—</b></span>
+            <span class="stat-chip">클릭 URL <b id="statClick">—</b></span>
+            <span class="stat-chip">검색어 <b id="statKw">—</b></span>
+            <span class="stat-chip">구글 <b id="statGoogle">—</b></span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="row gap wrap" style="justify-content:space-between;align-items:center">
+            <h2 style="margin:0">Google 계정 (무제한 추가)</h2>
+            <div class="row gap">
+              <button type="button" class="btn sm ghost" id="btnAddAccHome">+ 계정 추가</button>
+              <button type="button" class="btn sm ghost" id="btnClearAccHome">비우기</button>
+            </div>
+          </div>
+          <p class="hint">여러 개 돌리기 · 행 추가/삭제 자유 · 또는 아래에 붙여넣기</p>
+          <div class="table-wrap">
+            <table id="accTableHome">
+              <thead>
+                <tr>
+                  <th>이메일</th><th>비밀번호</th><th>Octo 프로필명</th><th>2FA시크릿</th><th>메모</th><th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <details style="margin-top:0.6rem">
+            <summary class="hint">대량 붙여넣기 (email|pass|2fa)</summary>
+            <textarea id="accountsBulk" rows="3" placeholder="user@gmail.com|비밀번호|2FA시크릿"></textarea>
+            <button type="button" class="btn sm ghost" id="btnParseAccounts">붙여넣기 반영</button>
+          </details>
+          <div id="accountsPreview" class="mini-list muted"></div>
+          <label class="check" style="margin-top:0.5rem">
+            <input type="checkbox" id="gEnabledHome" checked /> 구글 자동 로그인
+          </label>
+        </div>
+
         <div class="grid-2">
           <div class="card">
-            <h2>Google 계정</h2>
-            <p class="hint"><code>이메일|비밀번호|2FA시크릿</code> · 줄마다 1계정</p>
-            <textarea id="accountsBulk" rows="4" placeholder="user@gmail.com|비밀번호|2FA시크릿"></textarea>
-            <button type="button" class="btn sm ghost" id="btnParseAccounts">계정 반영</button>
-            <div id="accountsPreview" class="mini-list muted"></div>
-            <label class="check" style="margin-top:0.6rem">
-              <input type="checkbox" id="gEnabledHome" checked /> 구글 자동 로그인
-            </label>
+            <div class="row gap wrap" style="justify-content:space-between;align-items:center">
+              <h2 style="margin:0">검색어 (여러 개 · 추가/삭제)</h2>
+              <button type="button" class="btn sm ghost" id="btnAddKw">+ 검색어</button>
+            </div>
+            <div id="kwList" class="dyn-list"></div>
+            <textarea id="keywordsText" class="hidden" rows="1"></textarea>
+            <input type="text" id="keyword" class="hidden" />
           </div>
           <div class="card">
-            <h2>검색 · 클릭 목표</h2>
-            <label class="field">
-              <span>검색어 (/ 로 여러 개)</span>
-              <input type="text" id="keyword" placeholder="브랜드명 / 공식몰" />
+            <div class="row gap wrap" style="justify-content:space-between;align-items:center">
+              <h2 style="margin:0">클릭 사이트 (여러 개 · 추가/삭제)</h2>
+              <button type="button" class="btn sm ghost" id="btnAddSite">+ 사이트</button>
+            </div>
+            <div id="siteList" class="dyn-list"></div>
+            <textarea id="domainsText" class="hidden" rows="1"></textarea>
+            <input type="text" id="targetDomain" class="hidden" />
+            <label class="field" style="margin-top:0.5rem">
+              <span>사이트 안 버튼 글자 (쉼표)</span>
+              <input type="text" id="bannerText" placeholder="자세히 보기, 메뉴, 예약" />
             </label>
             <label class="field">
-              <span>클릭할 내 사이트</span>
-              <input type="text" id="targetDomain" placeholder="mysite.com" />
-            </label>
-            <label class="field">
-              <span>사이트 안 버튼 글자 (선택)</span>
-              <input type="text" id="bannerText" placeholder="자세히 보기, 메뉴" />
-            </label>
-            <label class="field">
-              <span>path 조건 (선택)</span>
+              <span>path 조건 (선택 · 줄마다 1개)</span>
               <input type="text" id="pathRegexQuick" placeholder="비우면 도메인만 클릭" />
             </label>
           </div>
@@ -149,18 +201,18 @@
 
         <div class="grid-2">
           <div class="card">
-            <h2>프록시</h2>
-            <textarea id="proxiesQuick" rows="5" placeholder="host:port:id:pw"></textarea>
-            <div class="row gap">
+            <div class="row gap wrap" style="justify-content:space-between;align-items:center">
+              <h2 style="margin:0">프록시 (여러 개 · 줄마다 1개)</h2>
               <button type="button" class="btn sm ghost" id="btnValidateProxies">확인</button>
-              <span id="proxyCount" class="muted">0개</span>
             </div>
+            <textarea id="proxiesQuick" rows="6" placeholder="host:port:id:pw"></textarea>
+            <span id="proxyCount" class="muted">0개</span>
           </div>
           <div class="card">
-            <h2>반복 · 속도 (오토 옵션)</h2>
+            <h2>반복 · 동시 (오토)</h2>
             <div class="row gap wrap">
               <label class="field inline">
-                <span>반복 횟수 (0=무한)</span>
+                <span>반복 (0=무한)</span>
                 <input type="number" id="macroLoops" value="0" min="0" max="9999" style="width:5.5rem" />
               </label>
               <label class="field inline">
@@ -173,13 +225,12 @@
               </label>
               <label class="field inline">
                 <span>동시 Octo 창</span>
-                <input type="number" id="parallelJobsHome" value="1" min="1" max="10" style="width:5rem" />
+                <input type="number" id="parallelJobsHome" value="1" min="1" max="20" style="width:5rem" />
               </label>
             </div>
-            <p class="hint">사람처럼 스크롤·체류·마우스 이동은 Octo 창 안에서 자동</p>
             <label class="field">
               <span>Octo API 토큰</span>
-              <input type="password" id="token" placeholder="Octo 설정 → API Token" autocomplete="off" />
+              <input type="password" id="token" placeholder="Octo → API Token" autocomplete="off" />
             </label>
             <button type="button" class="btn sm ghost" id="btnToggleToken">토큰 보기</button>
           </div>
