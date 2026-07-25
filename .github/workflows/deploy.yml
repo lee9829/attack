@@ -1,0 +1,38 @@
+name: Deploy to server
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Skip silently when server secrets are not configured yet
+    if: ${{ secrets.DEPLOY_HOST != '' && secrets.DEPLOY_USER != '' && secrets.DEPLOY_SSH_KEY != '' }}
+    steps:
+      - name: Deploy over SSH (git pull + restart)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            APP_DIR="${{ secrets.DEPLOY_PATH }}"
+            if [ -z "$APP_DIR" ]; then
+              APP_DIR="/opt/octo-google-site-automation"
+            fi
+            cd "$APP_DIR"
+            # Prefer bash deploy script; fall back to PowerShell on Windows OpenSSH
+            if [ -f deploy/deploy.sh ]; then
+              bash deploy/deploy.sh
+            elif [ -f deploy/deploy.ps1 ]; then
+              powershell -ExecutionPolicy Bypass -File deploy/deploy.ps1
+            else
+              git fetch origin main
+              git reset --hard origin/main
+              echo "deploy script missing; code updated only"
+            fi

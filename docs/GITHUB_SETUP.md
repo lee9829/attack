@@ -34,6 +34,8 @@ git commit -m "설명 메시지"
 git push
 ```
 
+서버 자동 배포( push → SSH pull/restart )는 [DEPLOY.md](./DEPLOY.md) 참고.
+
 ## 3. 클론한 사람이 할 일
 
 ```powershell

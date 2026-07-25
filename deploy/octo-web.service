@@ -1,0 +1,21 @@
+[Unit]
+Description=Octo Google Site Automation Web UI
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/octo-google-site-automation
+Environment=OCTO_HOST=0.0.0.0
+Environment=OCTO_PORT=8787
+Environment=OCTO_NO_BROWSER=1
+ExecStart=/usr/bin/python3 main.py --web --no-browser --host 0.0.0.0 --port 8787
+Restart=always
+RestartSec=3
+
+# Optional: tighten if you put secrets only in files mode 600
+# ReadWritePaths=/opt/octo-google-site-automation
+
+[Install]
+WantedBy=multi-user.target

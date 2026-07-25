@@ -59,6 +59,7 @@ Secrets stay local (see `.gitignore`):
 - Do **not** commit `config.json`, `accounts.csv`, `proxies.txt`, tokens, passwords
 
 Setup guide: [docs/GITHUB_SETUP.md](docs/GITHUB_SETUP.md)  
+Server auto-deploy (push → server): [docs/DEPLOY.md](docs/DEPLOY.md)  
 AI / collaboration history: [docs/AI_DEVELOPMENT.md](docs/AI_DEVELOPMENT.md)  
 Korean user guide: [README-KO.md](README-KO.md)
 

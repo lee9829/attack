@@ -16,6 +16,7 @@ CLI:
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import sys
 import traceback
@@ -95,12 +96,23 @@ def main() -> int:
     )
     parser.add_argument("--config", default="config.json", help="설정 파일 경로")
     parser.add_argument("--dry-run", action="store_true", help="배정만 확인 (CLI)")
-    parser.add_argument("--host", default="127.0.0.1", help="웹 서버 호스트")
-    parser.add_argument("--port", type=int, default=8787, help="웹 서버 포트")
+    parser.add_argument(
+        "--host",
+        default=os.environ.get("OCTO_HOST", "127.0.0.1"),
+        help="웹 서버 호스트 (env: OCTO_HOST, 서버 공개 시 0.0.0.0)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("OCTO_PORT", "8787")),
+        help="웹 서버 포트 (env: OCTO_PORT)",
+    )
     parser.add_argument(
         "--no-browser",
         action="store_true",
-        help="웹 시작 시 브라우저 자동 열기 안 함",
+        default=os.environ.get("OCTO_NO_BROWSER", "").strip().lower()
+        in ("1", "true", "yes"),
+        help="웹 시작 시 브라우저 자동 열기 안 함 (env: OCTO_NO_BROWSER=1)",
     )
     parser.add_argument(
         "--skip-deps",
