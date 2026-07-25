@@ -50,6 +50,22 @@ BASE_DIR = _ROOT
 manager = JobManager(BASE_DIR)
 
 
+def _read_env_file(path: Path) -> Dict[str, str]:
+    data: Dict[str, str] = {}
+    if not path.is_file():
+        return data
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            data[k.strip()] = v.strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return data
+
+
 def _load_web_auth() -> Tuple[Optional[str], Optional[str]]:
     """
     Web UI login credentials.
@@ -63,28 +79,60 @@ def _load_web_auth() -> Tuple[Optional[str], Optional[str]]:
     if user and password:
         return user, password
 
-    env_path = BASE_DIR / "web_auth.env"
-    if env_path.is_file():
-        data: Dict[str, str] = {}
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, v = line.split("=", 1)
-            data[k.strip()] = v.strip().strip('"').strip("'")
-        user = (data.get("OCTO_WEB_USER") or user).strip()
-        password = (data.get("OCTO_WEB_PASSWORD") or password).strip()
+    data = _read_env_file(BASE_DIR / "web_auth.env")
+    user = (data.get("OCTO_WEB_USER") or user).strip()
+    password = (data.get("OCTO_WEB_PASSWORD") or password).strip()
     if user and password:
         return user, password
     return None, None
+
+
+def _load_agent_token() -> str:
+    """Shared secret for Windows Agent EXE (no browser password needed)."""
+    tok = (os.environ.get("OCTO_AGENT_TOKEN") or "").strip()
+    if tok:
+        return tok
+    data = _read_env_file(BASE_DIR / "web_auth.env")
+    tok = (data.get("OCTO_AGENT_TOKEN") or "").strip()
+    if tok:
+        return tok
+    # also allow config.json (server-side only, gitignored)
+    try:
+        cfg_path = BASE_DIR / "config.json"
+        if cfg_path.is_file():
+            cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+            tok = str(cfg.get("agent_token") or "").strip()
+            if tok:
+                return tok
+    except Exception:
+        pass
+    return ""
+
+
+def _agent_token_ok(request: Request) -> bool:
+    expected = _load_agent_token()
+    if not expected:
+        return False
+    got = (request.headers.get("X-Agent-Token") or "").strip()
+    if not got:
+        # also allow query for simple tools
+        got = (request.query_params.get("agent_token") or "").strip()
+    if not got:
+        return False
+    return secrets.compare_digest(got, expected)
 
 
 class BasicAuthMiddleware(BaseHTTPMiddleware):
     """HTTP Basic Auth for the whole panel when credentials are configured."""
 
     async def dispatch(self, request: Request, call_next):
+        path = request.url.path or ""
         # health can stay public for uptime checks
-        if request.url.path in ("/api/health", "/favicon.ico"):
+        if path in ("/api/health", "/favicon.ico"):
+            return await call_next(request)
+
+        # Windows Agent EXE uses X-Agent-Token (no web password)
+        if path.startswith("/api/agent/") and _agent_token_ok(request):
             return await call_next(request)
 
         user, password = _load_web_auth()

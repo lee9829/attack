@@ -67,3 +67,7 @@ GitHub-Connect-Chrome.bat
 
 # Agent secrets for a specific worker (example is committed)
 agent/config.env
+agent/embedded_config.py
+agent/OctoAgent.exe
+dist/
+*.spec

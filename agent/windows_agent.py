@@ -1,48 +1,72 @@
 # -*- coding: utf-8 -*-
 """
-Windows Local Octo Agent
-------------------------
-PC에서 Octo Browser를 켠 뒤 이 에이전트를 실행하면,
-VPS 웹사이트(Start 버튼) 작업을 받아 로컬 Octo API로 실행합니다.
+Windows Local Octo Agent (script or EXE)
 
-  1) Octo Browser 실행 + 로그인
-  2) 이 스크립트 실행 (start_agent.bat)
-  3) 브라우저에서 http://서버:8787 접속 → 시작
+PC에서 Octo Browser 실행 후 이 프로그램만 켜 두면
+사이트(Start) 작업을 받아 로컬 Octo로 실행합니다.
 
-환경변수:
-  AGENT_SERVER   기본 http://66.29.149.197:8787
-  AGENT_NAME     기본 windows-pc
-  AGENT_USER     웹 Basic Auth 아이디 (있으면)
-  AGENT_PASS     웹 Basic Auth 비밀번호
+EXE 빌드 시 agent/embedded_config.py 에 서버·토큰이 박힙니다.
+→ 상대방은 비번 입력 없이 더블클릭만 하면 됩니다.
 """
 from __future__ import annotations
 
 import os
 import sys
+import tempfile
 import time
 import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import requests
 
-# project root on path
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+def _bootstrap_path() -> Path:
+    if getattr(sys, "frozen", False):
+        # PyInstaller: modules in _MEIPASS, work dir next to exe
+        meipass = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+        if str(meipass) not in sys.path:
+            sys.path.insert(0, str(meipass))
+        return Path(sys.executable).resolve().parent
+    root = Path(__file__).resolve().parent.parent
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    return root
 
-SERVER = (os.environ.get("AGENT_SERVER") or "http://66.29.149.197:8787").rstrip("/")
-NAME = os.environ.get("AGENT_NAME") or "windows-pc"
-USER = os.environ.get("AGENT_USER") or "admin"
-PASS = os.environ.get("AGENT_PASS") or ""
+
+ROOT = _bootstrap_path()
+
+try:
+    from agent.embedded_config import (  # type: ignore
+        AGENT_SERVER as EMB_SERVER,
+        AGENT_TOKEN as EMB_TOKEN,
+        AGENT_NAME as EMB_NAME,
+    )
+except Exception:
+    try:
+        from embedded_config import (  # type: ignore
+            AGENT_SERVER as EMB_SERVER,
+            AGENT_TOKEN as EMB_TOKEN,
+            AGENT_NAME as EMB_NAME,
+        )
+    except Exception:
+        EMB_SERVER = "http://66.29.149.197:8787"
+        EMB_TOKEN = ""
+        EMB_NAME = "windows-pc"
+
+import requests  # noqa: E402
+
+SERVER = (os.environ.get("AGENT_SERVER") or EMB_SERVER or "http://66.29.149.197:8787").rstrip(
+    "/"
+)
+NAME = os.environ.get("AGENT_NAME") or EMB_NAME or "windows-pc"
+TOKEN = (os.environ.get("AGENT_TOKEN") or EMB_TOKEN or "").strip()
 POLL = float(os.environ.get("AGENT_POLL") or "2")
 
 
 def _session() -> requests.Session:
     s = requests.Session()
     s.headers.update({"Content-Type": "application/json"})
-    if USER and PASS:
-        s.auth = (USER, PASS)
+    if TOKEN:
+        s.headers["X-Agent-Token"] = TOKEN
     return s
 
 
@@ -54,15 +78,14 @@ def heartbeat(s: requests.Session) -> None:
 def pull_job(s: requests.Session) -> Optional[Dict[str, Any]]:
     r = s.get(f"{SERVER}/api/agent/next-job", timeout=30)
     r.raise_for_status()
-    data = r.json()
-    return data.get("job")
+    return r.json().get("job")
 
 
 def push_log(s: requests.Session, msg: str) -> None:
     try:
         s.post(f"{SERVER}/api/agent/log", json={"msg": msg}, timeout=15)
     except Exception:
-        print(msg)
+        print(msg, flush=True)
 
 
 def finish(
@@ -79,6 +102,15 @@ def finish(
     ).raise_for_status()
 
 
+def _work_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        d = Path(sys.executable).resolve().parent / "octo-agent-data"
+    else:
+        d = ROOT / "logs" / "agent-work"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
 def run_job(s: requests.Session, job: Dict[str, Any]) -> None:
     from src.runner import AccountJob, JobRunner
     from src.proxy_manager import parse_proxy_text
@@ -86,12 +118,10 @@ def run_job(s: requests.Session, job: Dict[str, Any]) -> None:
     cfg = dict(job.get("config") or {})
     cfg["browser_engine"] = "octo"
     cfg["dry_run"] = bool(job.get("dry_run"))
-    # ensure local API points at this PC
     cfg.setdefault("local_base", "http://127.0.0.1:58888/api")
 
-    accounts_raw = list(job.get("accounts") or [])
     accounts: List[AccountJob] = []
-    for i, r in enumerate(accounts_raw):
+    for i, r in enumerate(list(job.get("accounts") or [])):
         accounts.append(
             AccountJob(
                 email=str(r.get("email") or ""),
@@ -105,20 +135,23 @@ def run_job(s: requests.Session, job: Dict[str, Any]) -> None:
         )
 
     px_text = str(job.get("proxies_text") or cfg.get("proxies_text") or "")
-    proxies, _errs = parse_proxy_text(
+    proxies, _ = parse_proxy_text(
         px_text, default_type=str(cfg.get("proxy_type") or "http")
     )
 
     def log(msg: str) -> None:
         line = str(msg).rstrip()
-        print(line)
+        print(line, flush=True)
         push_log(s, line)
 
-    log(f"[Agent] 작업 시작 id={job.get('id')} accounts={len(accounts)} proxies={len(proxies)}")
+    log(
+        f"[Agent] 작업 시작 id={job.get('id')} "
+        f"accounts={len(accounts)} proxies={len(proxies)}"
+    )
     try:
         runner = JobRunner(
             cfg,
-            ROOT,
+            _work_dir(),
             proxies=proxies,
             accounts=accounts,
             log=log,
@@ -131,34 +164,42 @@ def run_job(s: requests.Session, job: Dict[str, Any]) -> None:
         )
         finish(s, ok=True, result=result)
     except Exception as exc:
-        err = f"{exc}\n{traceback.format_exc()[-800:]}"
         log(f"[Agent] 실패: {exc}")
-        finish(s, ok=False, error=str(exc), result={"error": err})
+        finish(s, ok=False, error=str(exc), result={"trace": traceback.format_exc()[-600:]})
 
 
 def main() -> int:
-    print("=" * 50)
-    print(" Octo Windows Agent")
-    print(f" Server: {SERVER}")
-    print(f" Name:   {NAME}")
-    print(" 1) Octo Browser 실행·로그인 확인")
-    print(" 2) 웹에서 browser_engine=agent 로 시작")
-    print("=" * 50)
+    print("=" * 52, flush=True)
+    print("  Octo Agent (Windows)", flush=True)
+    print(f"  Server : {SERVER}", flush=True)
+    print(f"  Name   : {NAME}", flush=True)
+    print(f"  Token  : {'OK(내장)' if TOKEN else '없음 — 서버 연동 실패 가능'}", flush=True)
+    print("  1) Octo Browser 실행·로그인", flush=True)
+    print("  2) 이 창 유지", flush=True)
+    print("  3) 사이트에서 엔진=agent 로 [시작]", flush=True)
+    print("=" * 52, flush=True)
+
+    if not TOKEN:
+        print("[Agent] 경고: AGENT_TOKEN 이 비어 있습니다. EXE를 다시 빌드하세요.", flush=True)
+
     s = _session()
+    fails = 0
     while True:
         try:
             heartbeat(s)
+            fails = 0
             job = pull_job(s)
             if job:
                 run_job(s, job)
             else:
                 time.sleep(POLL)
         except KeyboardInterrupt:
-            print("\n[Agent] 종료")
+            print("\n[Agent] 종료", flush=True)
             return 0
         except Exception as exc:
-            print(f"[Agent] 연결/오류: {exc}")
-            time.sleep(max(3.0, POLL))
+            fails += 1
+            print(f"[Agent] 연결 오류 ({fails}): {exc}", flush=True)
+            time.sleep(min(15, 2 + fails))
     return 0
 
 
