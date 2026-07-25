@@ -8,16 +8,14 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # Skip silently when server secrets are not configured yet
-    if: ${{ secrets.DEPLOY_HOST != '' && secrets.DEPLOY_USER != '' && secrets.DEPLOY_SSH_KEY != '' }}
     steps:
-      - name: Deploy over SSH (git pull + restart)
+      - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          port: ${{ secrets.DEPLOY_PORT }}
           script_stop: true
           script: |
             set -euo pipefail
@@ -27,13 +25,4 @@ jobs:
             fi
             cd "$APP_DIR"
             git config --global --add safe.directory "$APP_DIR" 2>/dev/null || true
-            # Prefer bash deploy script; fall back to PowerShell on Windows OpenSSH
-            if [ -f deploy/deploy.sh ]; then
-              bash deploy/deploy.sh
-            elif [ -f deploy/deploy.ps1 ]; then
-              powershell -ExecutionPolicy Bypass -File deploy/deploy.ps1
-            else
-              git fetch origin main
-              git reset --hard origin/main
-              echo "deploy script missing; code updated only"
-            fi
+            bash deploy/deploy.sh
