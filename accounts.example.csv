@@ -1,0 +1,2 @@
+email,password,profile_title,otp_secret,otp_url,notes
+you@gmail.com,your_password,g-you-1,JBSWY3DPEHPK3PXP,,2FA TOTP secret (Authenticator)

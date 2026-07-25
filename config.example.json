@@ -1,0 +1,148 @@
+{
+  "octo_api_token": "",
+  "cloud_base": "https://app.octobrowser.net/api/v2/automation",
+  "local_base": "http://127.0.0.1:58888/api",
+  "proxy_type": "http",
+  "proxy_mode": "round_robin",
+  "proxy_start_index": 0,
+  "proxies_file": "proxies.txt",
+  "accounts_file": "accounts.csv",
+  "proxies_text": "",
+  "accounts_rows": [
+    {
+      "email": "",
+      "password": "",
+      "profile_title": "qa-mybrand-1",
+      "notes": "자사 SEO·CTA 점검"
+    }
+  ],
+  "reuse_existing_profiles": true,
+  "create_profile_if_missing": true,
+  "headless": false,
+  "start_timeout_sec": 120,
+  "delay_between_jobs_sec": 15,
+  "stop_profile_after_job": true,
+  "google_login": {
+    "enabled": false,
+    "mode": "skip",
+    "login_url": "https://accounts.google.com/",
+    "success_url_contains": [
+      "myaccount.google.com",
+      "mail.google.com",
+      "accounts.google.com/b/",
+      "drive.google.com"
+    ],
+    "manual_wait_sec": 300,
+    "autofill_pause_ms": 350,
+    "otp_fetch": {
+      "enabled": true,
+      "secret": "",
+      "url": "https://2fa-auth.com/",
+      "selector": "",
+      "regex": "\\b(\\d{6})\\b",
+      "wait_ms": 2500
+    }
+  },
+  "search_flow": {
+    "enabled": true,
+    "purpose": "own_site_qa",
+    "keyword": "카지노사이트 / 카지노사이트순위 / 카지노사이트추천",
+    "keywords": [
+      "카지노사이트",
+      "카지노사이트순위",
+      "카지노사이트추천"
+    ],
+    "keywords_text": "카지노사이트\n카지노사이트순위\n카지노사이트추천",
+    "keyword_fallback": true,
+    "stop_on_first_keyword_hit": true,
+    "target_domain": "example-mybrand.com",
+    "allowed_domains": ["example-mybrand.com"],
+    "domains_text": "example-mybrand.com",
+    "target_url_contains": [],
+    "url_regex": "",
+    "url_regex_text": "",
+    "path_regex": "/promo/.*",
+    "path_regex_text": "/promo/.*\n^/event/[0-9]+",
+    "path_regexes": ["/promo/.*", "^/event/[0-9]+"],
+    "require_regex": true,
+    "title_contains": ["공식"],
+    "title_regex": "",
+    "path_targets": [],
+    "path_targets_text": "",
+    "path_exclude": [],
+    "path_exclude_text": "",
+    "require_domain": true,
+    "skip_ads": true,
+    "search_url": "https://www.google.com/",
+    "max_serp_pages": 3,
+    "revisit_count": 1,
+    "warmup": true,
+    "human": {
+      "dwell_ms_min": 4000,
+      "dwell_ms_max": 12000,
+      "scroll": true,
+      "mouse_wander": true,
+      "read_pauses": true,
+      "scroll_steps_min": 3,
+      "scroll_steps_max": 8,
+      "scroll_up_chance": 0.25,
+      "random_internal_click": false,
+      "serp_scroll_min": 2,
+      "serp_scroll_max": 5
+    },
+    "banner_clicks": [
+      {
+        "selector": "",
+        "text_contains": "메뉴",
+        "wait_after_ms": 2000,
+        "optional": true
+      },
+      {
+        "selector": "",
+        "text_contains": "예약",
+        "wait_after_ms": 2000,
+        "optional": true
+      }
+    ],
+    "also_run_targets": false
+  },
+  "targets": [],
+  "max_jobs": 0,
+  "parallel_jobs": 3,
+  "stagger_start_sec": 1.5,
+  "parallel_jobs_max": 20,
+  "ops": {
+    "enabled": true,
+    "mode": "swarm",
+    "browser_preset": "swarm",
+    "run_http_ops": true,
+    "browser_after_recon": true,
+    "skip_hammer": false,
+    "skip_recon": false,
+    "path_workers": 12,
+    "hammer_requests": 60,
+    "hammer_workers": 15,
+    "hammer_url": "",
+    "swarm_parallel": 5,
+    "force_parallel": false,
+    "tight_stagger": true,
+    "waves": 1,
+    "intensity": 3,
+    "extra_paths_text": "",
+    "extra_paths": []
+  },
+  "cookies": {
+    "enabled": false,
+    "when": "on_site",
+    "domain": "example-mybrand.com",
+    "url": "https://example-mybrand.com/",
+    "warm_url": "https://example-mybrand.com/",
+    "warm_navigate": true,
+    "clear_first": false,
+    "reload_on_site": true,
+    "text": "",
+    "json": "",
+    "cookies": []
+  },
+  "dry_run": false
+}

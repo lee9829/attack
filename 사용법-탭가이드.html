@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OctoAutomation 탭 사용법 · 테스트 가이드 v1.13</title>
+<style>
+  :root {
+    --bg: #0b0e14;
+    --chrome: #12161f;
+    --sidebar: #0e1219;
+    --card: #171c27;
+    --border: #2a3142;
+    --text: #eef2f8;
+    --muted: #8b95a8;
+    --accent: #3dd68c;
+    --blue: #5b9dff;
+    --warn: #f0b429;
+    --danger: #ff6b6b;
+    --input: #0a0d13;
+    --hover: #1c2433;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", "Malgun Gothic", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.55;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 28px 20px 80px; }
+  h1 { font-size: 1.75rem; margin: 0 0 8px; }
+  h2 { font-size: 1.25rem; margin: 36px 0 12px; color: var(--accent); }
+  h3 { font-size: 1.05rem; margin: 18px 0 8px; color: var(--blue); }
+  p, li { color: var(--text); }
+  .muted { color: var(--muted); }
+  .lead { color: var(--muted); margin-bottom: 24px; }
+  .badge {
+    display: inline-block;
+    background: #1a3d2e;
+    color: var(--accent);
+    font-size: 0.75rem;
+    padding: 3px 10px;
+    border-radius: 999px;
+    margin-right: 6px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin: 12px 0;
+  }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
+
+  /* App shell mock */
+  .app {
+    display: grid;
+    grid-template-columns: 170px 1fr;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--chrome);
+    margin: 16px 0 24px;
+    min-height: 420px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.45);
+  }
+  .side {
+    background: var(--sidebar);
+    padding: 14px 10px;
+    border-right: 1px solid var(--border);
+  }
+  .side .brand { font-size: 0.7rem; color: var(--muted); letter-spacing: .08em; margin: 4px 8px 12px; }
+  .nav-item {
+    display: block;
+    padding: 10px 12px;
+    margin: 3px 0;
+    border-radius: 8px;
+    color: var(--muted);
+    font-size: 0.9rem;
+    cursor: default;
+  }
+  .nav-item.active {
+    background: var(--hover);
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .main { padding: 16px 18px; background: var(--bg); }
+  .main h4 { margin: 0 0 6px; font-size: 1.05rem; }
+  .field {
+    background: var(--input);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin: 6px 0;
+    font-family: Consolas, monospace;
+    font-size: 0.82rem;
+    color: #c5d0e0;
+  }
+  .field.hl { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(61,214,140,.25); }
+  .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .btn {
+    background: #1e2a22;
+    border: 1px solid #2f5a44;
+    color: var(--accent);
+    padding: 7px 12px;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+  .btn.primary {
+    background: linear-gradient(180deg, #2bb673, #1f8f5a);
+    border-color: #3dd68c;
+    color: #04140c;
+  }
+  .btn.ghost { background: var(--card); border-color: var(--border); color: var(--text); }
+  .live {
+    margin-top: 12px;
+    padding: 10px;
+    background: #121820;
+    border: 1px dashed #3a465c;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    color: #ffd166;
+  }
+  .step {
+    display: flex;
+    gap: 12px;
+    margin: 10px 0;
+    align-items: flex-start;
+  }
+  .step .n {
+    flex: 0 0 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #1a3d2e;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+  }
+  .step .body { flex: 1; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 8px 10px;
+    text-align: left;
+  }
+  th { background: #121820; color: var(--blue); }
+  code {
+    background: #0a0d13;
+    padding: 1px 6px;
+    border-radius: 4px;
+    color: #9ae6b4;
+    font-size: 0.85em;
+  }
+  .pipe {
+    background: #0a0d13;
+    border-left: 3px solid var(--accent);
+    padding: 12px 14px;
+    font-family: Consolas, monospace;
+    font-size: 0.9rem;
+    margin: 10px 0;
+    border-radius: 0 8px 8px 0;
+  }
+  .warn-box {
+    background: #2a2210;
+    border: 1px solid #6a5520;
+    color: #f0d080;
+    padding: 12px 14px;
+    border-radius: 10px;
+    margin: 14px 0;
+  }
+  .flow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin: 14px 0;
+  }
+  .flow .box {
+    background: var(--card);
+    border: 1px solid var(--border);
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 0.82rem;
+    text-align: center;
+    min-width: 90px;
+  }
+  .flow .box strong { display: block; color: var(--accent); font-size: 0.75rem; margin-bottom: 4px; }
+  .flow .arr { color: var(--muted); font-weight: 700; }
+  footer { margin-top: 40px; color: var(--muted); font-size: 0.85rem; }
+  a { color: var(--blue); }
+  .toc a { text-decoration: none; color: var(--text); }
+  .toc li { margin: 6px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="badge">v1.13</span>
+  <span class="badge">Windows</span>
+  <span class="badge">테스트용 가이드</span>
+  <h1>OctoAutomation · 탭 사용법 &amp; 기능 설명</h1>
+  <p class="lead">
+    왼쪽 메뉴(탭)마다 무엇을 입력하고, 버튼이 무엇을 하는지, 테스트 순서를 화면 디자인으로 정리했습니다.<br />
+    실행 파일: <code>dist\OctoAutomation_v113.exe</code> · Octo Browser 를 먼저 실행·로그인하세요.
+  </p>
+
+  <div class="card toc">
+    <strong>목차</strong>
+    <ol>
+      <li><a href="#flow">전체 흐름 (한 눈에)</a></li>
+      <li><a href="#home">탭① 원클릭 시작 (가장 중요)</a></li>
+      <li><a href="#proxies">탭② 프록시</a></li>
+      <li><a href="#profiles">탭③ 프로필·2FA</a></li>
+      <li><a href="#search">탭④ 검색·path</a></li>
+      <li><a href="#beta">탭⑤ 베타 테스트</a></li>
+      <li><a href="#settings">탭⑥ 설정</a></li>
+      <li><a href="#guide">탭⑦ 쉬운 사용법</a></li>
+      <li><a href="#bottom">하단 버튼 · 실시간 상태 · 로그</a></li>
+      <li><a href="#test">테스트 체크리스트 (순서대로)</a></li>
+    </ol>
+  </div>
+
+  <!-- FLOW -->
+  <h2 id="flow">1. 전체 흐름 (한 눈에)</h2>
+  <div class="flow">
+    <div class="box"><strong>① 토큰</strong>Octo API</div>
+    <span class="arr">→</span>
+    <div class="box"><strong>② 계정 붙여넣기</strong>email|비번|시크릿</div>
+    <span class="arr">→</span>
+    <div class="box"><strong>③ 검색·도메인</strong>키워드</div>
+    <span class="arr">→</span>
+    <div class="box"><strong>④ 프록시</strong>host:port:…</div>
+    <span class="arr">→</span>
+    <div class="box"><strong>⑤ 원클릭 시작</strong>자동 실행</div>
+  </div>
+  <div class="card">
+    <p style="margin:0"><strong>계정마다 자동으로:</strong></p>
+    <p class="muted" style="margin:8px 0 0">
+      Octo 프로필 생성 → 프록시 주입 → 브라우저 시작 → Google 아이디·비번 입력 →
+      2FA 시크릿으로 6자리 생성·복사·입력 → 검색 → 자사 사이트 클릭·체류 → 다음 계정
+    </p>
+  </div>
+
+  <!-- HOME -->
+  <h2 id="home">2. 탭① 원클릭 시작 (홈) — 테스트는 여기부터</h2>
+  <p class="muted">왼쪽 메뉴 맨 위 <strong>「원클릭 시작」</strong>. 대부분 작업은 이 화면만으로 끝납니다.</p>
+
+  <div class="app">
+    <div class="side">
+      <div class="brand">WORKSPACE</div>
+      <div class="nav-item active">⌂  원클릭 시작</div>
+      <div class="nav-item">◈  프록시</div>
+      <div class="nav-item">◎  프로필·2FA</div>
+      <div class="nav-item">⌕  검색·path</div>
+      <div class="nav-item">⚗  베타 테스트</div>
+      <div class="nav-item">⚙  설정</div>
+      <div class="nav-item">?  쉬운 사용법</div>
+    </div>
+    <div class="main">
+      <h4>원클릭 매크로 · 계정 여러 개도 한 번에</h4>
+      <p class="muted" style="margin:0 0 10px;font-size:0.85rem">이메일|비번|2FA시크릿 → 프로필 + 로그인 + 2FA + 검색</p>
+
+      <div class="card" style="margin:0 0 10px;padding:12px">
+        <div style="font-size:0.8rem;color:var(--muted)">① Octo API 토큰</div>
+        <div class="field">•••••••••••••••••••• (Settings → Additional → API Token)</div>
+        <div class="btn-row"><span class="btn ghost">연결 테스트</span></div>
+      </div>
+
+      <div class="card" style="margin:0 0 10px;padding:12px;border-color:#3dd68c55">
+        <div style="font-size:0.8rem;color:var(--accent)">② 구글 계정 한 줄 붙여넣기 ★</div>
+        <div class="field hl">
+          user@gmail.com|MyPass123|7DWQUCVH4ZBILCWK…<br />
+          other@gmail.com|pass2|ABCDEFGHIJKLMNOP…
+        </div>
+        <div class="btn-row">
+          <span class="btn primary">붙여넣기 반영 + 2FA 검증</span>
+          <span class="btn ghost">2FA 미리보기</span>
+          <span class="btn ghost">시작 전 점검</span>
+        </div>
+      </div>
+
+      <div class="card" style="margin:0;padding:12px">
+        <div style="font-size:0.8rem;color:var(--muted)">③ 검색어 · 자사 도메인</div>
+        <div class="field">검색어: 카지노</div>
+        <div class="field">도메인: mysite.com</div>
+        <div class="btn-row"><span class="btn primary">▶ 원클릭 시작 (전부 자동)</span></div>
+      </div>
+
+      <div class="live">
+        실시간 상태 · 단계: 계정 1/3 · Google: user@… · 2FA 코드: 482193 · 검색·클릭: …
+      </div>
+    </div>
+  </div>
+
+  <h3>홈 화면 입력 항목</h3>
+  <table>
+    <tr><th>구역</th><th>무엇을 넣나</th><th>버튼 역할</th></tr>
+    <tr>
+      <td><strong>① API 토큰</strong></td>
+      <td>Octo Browser → Settings → Additional → API Token</td>
+      <td><code>연결 테스트</code> = Cloud/Local 연결 확인</td>
+    </tr>
+    <tr>
+      <td><strong>② 계정 붙여넣기</strong></td>
+      <td><code>이메일|비밀번호|2FA시크릿</code> 한 줄 (여러 계정이면 줄바꿈)</td>
+      <td>
+        <code>붙여넣기 반영 + 2FA 검증</code> = 프로필 목록 생성 + 시크릿으로 6자리 생성 가능한지 검사<br />
+        <code>2FA 미리보기</code> = 지금 코드 확인<br />
+        <code>시작 전 점검</code> = 토큰/프록시/계정/검색어 체크리스트
+      </td>
+    </tr>
+    <tr>
+      <td><strong>②-B 한 계정</strong></td>
+      <td>아이디·비번·시크릿을 칸에 따로 입력</td>
+      <td><code>이 계정 추가</code></td>
+    </tr>
+    <tr>
+      <td><strong>③ 검색·도메인</strong></td>
+      <td>검색할 단어 + 클릭할 자사 도메인</td>
+      <td>—</td>
+    </tr>
+    <tr>
+      <td><strong>④ 프록시</strong></td>
+      <td><code>host:port:user:pass</code> 한 줄씩</td>
+      <td><code>프록시에 반영·검증</code></td>
+    </tr>
+  </table>
+
+  <div class="pipe">
+    user@gmail.com|비밀번호|2FA시크릿키<br />
+    other@gmail.com|비밀번호2|다른시크릿키
+  </div>
+  <p class="muted">2FA 시크릿 = Google Authenticator / 2fa-auth.com 에 넣는 base32 키. 사이트에 매번 등록할 필요 없음.</p>
+
+  <!-- PROXIES -->
+  <h2 id="proxies">3. 탭② 프록시</h2>
+  <div class="app">
+    <div class="side">
+      <div class="brand">WORKSPACE</div>
+      <div class="nav-item">⌂  원클릭 시작</div>
+      <div class="nav-item active">◈  프록시</div>
+      <div class="nav-item">◎  프로필·2FA</div>
+      <div class="nav-item">⌕  검색·path</div>
+    </div>
+    <div class="main">
+      <h4>프록시</h4>
+      <p class="muted" style="font-size:0.85rem">프로필마다 다른 프록시를 Octo API로 자동 주입</p>
+      <div class="field">Type: http &nbsp; Mode: round_robin</div>
+      <div class="field hl" style="min-height:70px">
+        gw.example.com:5959:user:pass<br />
+        gw.example.com:5959:user2:pass2
+      </div>
+      <div class="btn-row">
+        <span class="btn primary">검증 · 목록 반영</span>
+        <span class="btn ghost">파일 불러오기</span>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <ul style="margin:0;padding-left:18px">
+      <li><strong>round_robin</strong> — 계정마다 프록시를 순서대로 바꿈 (권장)</li>
+      <li><strong>from_selected</strong> — 목록에서 고른 줄부터</li>
+      <li><strong>fixed</strong> — 한 개만 고정</li>
+      <li>형식: <code>host:port:user:pass</code></li>
+    </ul>
+  </div>
+
+  <!-- PROFILES -->
+  <h2 id="profiles">4. 탭③ 프로필·2FA</h2>
+  <div class="app">
+    <div class="side">
+      <div class="brand">WORKSPACE</div>
+      <div class="nav-item">⌂  원클릭 시작</div>
+      <div class="nav-item">◈  프록시</div>
+      <div class="nav-item active">◎  프로필·2FA</div>
+      <div class="nav-item">⌕  검색·path</div>
+    </div>
+    <div class="main">
+      <h4>프로필</h4>
+      <div class="field" style="font-size:0.75rem">
+        이메일 | 비밀번호 | 프로필명 | 2FA시크릿 | 2FA URL | 메모<br />
+        ─────────────────────────────────────<br />
+        a@gmail.com · •••• · g-a-1 · 7DWQ… · 2fa-auth.com · pipe<br />
+        b@gmail.com · •••• · g-b-2 · ABCD… · 2fa-auth.com · pipe
+      </div>
+      <div class="card" style="margin:10px 0 0;padding:10px">
+        <div style="font-size:0.8rem;color:var(--accent)">Google 로그인 + 2FA 자동</div>
+        <div class="muted" style="font-size:0.8rem">모드 auto · 시크릿 있으면 팝업 없이 6자리 자동 입력</div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <p style="margin:0 0 8px"><strong>홈에서 붙여넣기하면 여기 표가 자동으로 채워집니다.</strong></p>
+    <ul style="margin:0;padding-left:18px" class="muted">
+      <li>계정 1개 = Octo 프로필 1개 = 작업 1회</li>
+      <li>각 행의 <strong>2FA시크릿</strong>만 그 계정 로그인에 사용 (서로 섞이지 않음)</li>
+      <li>모드 <code>auto</code> = 아이디·비번·2FA 전부 자동 / <code>skip</code> = 로그인 안 함</li>
+    </ul>
+  </div>
+
+  <!-- SEARCH -->
+  <h2 id="search">5. 탭④ 검색·path</h2>
+  <div class="app">
+    <div class="side">
+      <div class="brand">WORKSPACE</div>
+      <div class="nav-item">⌂  원클릭 시작</div>
+      <div class="nav-item">◈  프록시</div>
+      <div class="nav-item">◎  프로필·2FA</div>
+      <div class="nav-item active">⌕  검색·path</div>
+    </div>
+    <div class="main">
+      <h4>검색 · 자사 노출 · CTA</h4>
+      <div class="field">기본 검색어 / 대표 도메인</div>
+      <div class="field">URL 특징 · URL 정규식 · 결과 제목</div>
+      <div class="field hl">path 타겟: promo, /landing &nbsp;|&nbsp; path 제외: blog, /old</div>
+      <div class="muted" style="font-size:0.8rem">광고 제목 옆 작은 경로(example.com › promo) 필터</div>
+      <div class="field" style="min-height:50px">자사 도메인 목록 · 추가 검색어 목록 (여러 줄)</div>
+      <div class="btn-row">
+        <span class="btn ghost">사람처럼 행동: 스크롤·마우스·체류</span>
+      </div>
+    </div>
+  </div>
+  <table>
+    <tr><th>옵션</th><th>의미</th><th>테스트 팁</th></tr>
+    <tr><td>path 타겟</td><td>이 path만 클릭</td><td><code>promo</code> 넣으면 그 경로 광고/결과만</td></tr>
+    <tr><td>path 제외</td><td>이 path면 클릭 안 함</td><td><code>blog</code> 넣으면 블로그 스킵</td></tr>
+    <tr><td>광고 스킵</td><td>ON=광고 안 누름</td><td>광고 path를 치려면 <strong>OFF</strong></td></tr>
+    <tr><td>자사 도메인만</td><td>목록 도메인만 클릭</td><td>권장 ON</td></tr>
+    <tr><td>SERP 페이지 / 클릭수</td><td>몇 페이지·몇 번 클릭</td><td>테스트는 페이지 2, 클릭 2 권장</td></tr>
+  </table>
+
+  <!-- BETA -->
+  <h2 id="beta">6. 탭⑤ 베타 테스트</h2>
+  <div class="card">
+    <p>기능을 <strong>한 단계씩</strong> 검증할 때 사용합니다. 전체 원클릭 전에 연결·로그인만 확인하고 싶을 때 유용합니다.</p>
+    <ul>
+      <li>T1~T5: 연결·프로필 등 기반</li>
+      <li>T6: Google 로그인</li>
+      <li>T7: 검색</li>
+      <li>T8: CTA</li>
+    </ul>
+    <p class="muted">각 단계 후 평가(좋음/보통/문제)를 남길 수 있습니다.</p>
+  </div>
+
+  <!-- SETTINGS -->
+  <h2 id="settings">7. 탭⑥ 설정</h2>
+  <div class="card">
+    <table>
+      <tr><th>항목</th><th>설명</th></tr>
+      <tr><td>작업 간 대기(초)</td><td>계정과 계정 사이 쉬는 시간 (기본 15)</td></tr>
+      <tr><td>프로필 시작 타임아웃</td><td>Octo 프로필 켜질 때까지 대기</td></tr>
+      <tr><td>최대 작업 수</td><td>0=전체 계정, 3이면 앞 3개만</td></tr>
+      <tr><td>작업 후 프로필 중지</td><td>권장 ON (리소스 절약)</td></tr>
+      <tr><td>Cloud / Local API 주소</td><td>보통 기본값 유지</td></tr>
+    </table>
+  </div>
+
+  <!-- GUIDE -->
+  <h2 id="guide">8. 탭⑦ 쉬운 사용법</h2>
+  <div class="card">
+    <p>프로그램 안에 들어 있는 짧은 매뉴얼 텍스트입니다. 이 HTML 파일과 같은 내용의 요약본입니다.</p>
+  </div>
+
+  <!-- BOTTOM -->
+  <h2 id="bottom">9. 하단 버튼 · 실시간 상태 · 로그</h2>
+  <div class="card">
+    <div class="btn-row" style="margin-bottom:12px">
+      <span class="btn ghost">저장</span>
+      <span class="btn ghost">연결 테스트</span>
+      <span class="btn ghost">미리보기</span>
+      <span class="btn primary">▶ 원클릭 시작</span>
+      <span class="btn" style="background:#3a1515;border-color:#6a3030;color:#ff8a8a">■ 중지</span>
+    </div>
+    <table>
+      <tr><th>버튼</th><th>역할</th></tr>
+      <tr><td>저장</td><td>config.json · proxies · accounts.csv 저장</td></tr>
+      <tr><td>연결 테스트</td><td>Octo Cloud + Local API 확인</td></tr>
+      <tr><td>미리보기 (DRY RUN)</td><td>브라우저 없이 계정·프록시 배정만 확인</td></tr>
+      <tr><td>▶ 원클릭 시작</td><td>실제 자동 실행</td></tr>
+      <tr><td>■ 중지</td><td>남은 계정 작업 취소</td></tr>
+    </table>
+    <div class="live" style="margin-top:14px">
+      <strong>실시간 상태</strong><br />
+      단계: 계정 2/5 &nbsp;|&nbsp; Google: user@… &nbsp;|&nbsp; 2FA 코드: 482193 · 인증 완료 &nbsp;|&nbsp; 검색·클릭: …
+    </div>
+    <p class="muted" style="margin:10px 0 0;font-size:0.85rem">
+      로그 창: 출구 IP · 프로필 · 검색어 · 클릭 URL · 2FA 성공/실패가 한글로 전부 표시됩니다.
+    </p>
+  </div>
+
+  <!-- TEST -->
+  <h2 id="test">10. 테스트 체크리스트 (이 순서대로)</h2>
+  <div class="warn-box">
+    테스트 전: <strong>Octo Browser 실행 + 로그인</strong> 필수. Base 이상 API 요금제·API 토큰 준비.
+  </div>
+
+  <div class="step">
+    <div class="n">1</div>
+    <div class="body">
+      <strong>연결만 테스트</strong><br />
+      <span class="muted">홈 ① 토큰 입력 → [연결 테스트] → Offline 이 아니고 Cloud OK / Local OK 인지 확인</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="n">2</div>
+    <div class="body">
+      <strong>계정 1개만 붙여넣기</strong><br />
+      <span class="muted"><code>내계정@gmail.com|비번|시크릿</code> → [붙여넣기 반영 + 2FA 검증] → 미리보기 코드 6자리 나오는지</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="n">3</div>
+    <div class="body">
+      <strong>프록시 1줄 검증</strong><br />
+      <span class="muted">홈 ④ 또는 프록시 탭 → [검증] → Proxies: 1 이상</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="n">4</div>
+    <div class="body">
+      <strong>검색어·도메인</strong><br />
+      <span class="muted">실제 검색될 단어 + 내 사이트 도메인. 테스트는 클릭수 2, SERP 2페이지 권장 (검색 탭)</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="n">5</div>
+    <div class="body">
+      <strong>[시작 전 점검]</strong><br />
+      <span class="muted">빨간 ✗ 없으면 준비 완료</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="n">6</div>
+    <div class="body">
+      <strong>미리보기 (DRY RUN)</strong><br />
+      <span class="muted">브라우저 없이 배정만 로그에 찍히는지 확인</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="n">7</div>
+    <div class="body">
+      <strong>▶ 원클릭 시작 (LIVE)</strong><br />
+      <span class="muted">실시간 상태: 로그인 → 2FA 코드 표시 → 인증 완료 → 검색·클릭 순으로 변하는지 관찰</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="n">8</div>
+    <div class="body">
+      <strong>여러 계정</strong><br />
+      <span class="muted">2~3줄 붙여넣기 후 시작 → 계정 1/3, 2/3 … 진행, 실패해도 다음 계정 계속되는지</span>
+    </div>
+  </div>
+
+  <h3>성공 시 로그 예시</h3>
+  <div class="pipe">
+    [2FA] 자동 코드 생성: 482193<br />
+    [2FA] 코드 클립보드 복사 완료: 482193<br />
+    [Google] 2FA 코드 자동 입력 중… (482193)<br />
+    [2FA] 인증 성공 · 사용 코드 482193<br />
+    [SEARCH] 검색어 '…' 완료 — 자사 클릭 N건
+  </div>
+
+  <h3>자주 막히는 곳</h3>
+  <table>
+    <tr><th>증상</th><th>확인</th></tr>
+    <tr><td>Local OFF</td><td>Octo 앱 실행·로그인, Local API 포트</td></tr>
+    <tr><td>2FA 시크릿 오류</td><td>base32 키인지, 공백/오타, | 위치가 맞는지</td></tr>
+    <tr><td>로그인만 되고 검색 안 함</td><td>검색어·도메인 입력, 검색 탭 ON</td></tr>
+    <tr><td>광고 path 안 눌림</td><td>검색 탭 「광고 스킵」 OFF + path 타겟 설정</td></tr>
+    <tr><td>전화 알림만 뜸</td><td>Google 계정에 Authenticator 앱 2FA 등록 필요</td></tr>
+  </table>
+
+  <footer>
+    Octo Google Site Automation · 탭 사용법 가이드 · 프로젝트 폴더의 이 파일을 브라우저로 열면 됩니다.<br />
+    파일 위치: <code>사용법-탭가이드.html</code>
+  </footer>
+</div>
+</body>
+</html>

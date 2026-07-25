@@ -1,0 +1,11 @@
+# 자사 사이트 대량 목록 예시 (한 줄 = 1 타겟)
+# 지원: 도메인 / 전체 URL / path / 정규식
+# 파일명: urls.txt  또는  sites.txt  (프로젝트 루트)
+
+mysite.com
+https://mysite.com/promo/summer
+https://mysite.com/event/1
+www.mysite.com/board/view
+shop.mysite.com
+/promo/.*
+^/event/[0-9]+

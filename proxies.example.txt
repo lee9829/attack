@@ -1,0 +1,9 @@
+# 한 줄에 하나씩. 지원 형식:
+# host:port:user:password
+# host:port
+# type://user:password@host:port
+# type://host:port
+#
+# 예시 (실제 값으로 교체하세요):
+# proxy.example.net:10001:myuser:mypass
+# socks5://user:pass@1.2.3.4:1080

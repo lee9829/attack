@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+*.spec
+
+# Virtual env
+.venv/
+venv/
+env/
+
+# Local secrets & runtime data (do NOT commit)
+.env
+.env.*
+config.json
+proxies.txt
+accounts.csv
+domains.txt
+keywords.txt
+urls.txt
+sites.txt
+targets_urls.txt
+paths.txt
+.deps_ok
+.manual_seen
+
+# Logs & feedback
+logs/
+feedback/
+*.log
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Tooling caches
+.qodo/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Packaging artifacts
+*.zip
+*.exe

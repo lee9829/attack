@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ title }} · v{{ version }}</title>
+  <link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo ops">OPS</div>
+        <div>
+          <div class="brand-title">Octo OPS Console</div>
+          <div class="brand-sub">자사 전용 · v{{ version }}</div>
+        </div>
+      </div>
+      <nav class="nav" id="nav">
+        <button type="button" class="nav-btn active" data-page="home">홈 · 원클릭</button>
+        <button type="button" class="nav-btn" data-page="ops">⚔ OPS 콘솔</button>
+        <button type="button" class="nav-btn" data-page="proxies">프록시</button>
+        <button type="button" class="nav-btn" data-page="accounts">계정 · Google</button>
+        <button type="button" class="nav-btn" data-page="search">검색 · 키워드</button>
+        <button type="button" class="nav-btn" data-page="bulk">대량 사이트</button>
+        <button type="button" class="nav-btn" data-page="cookies">쿠키 주입</button>
+        <button type="button" class="nav-btn" data-page="settings">동시실행 · 설정</button>
+        <button type="button" class="nav-btn" data-page="logs">로그</button>
+        <button type="button" class="nav-btn" data-page="help">사용법</button>
+      </nav>
+      <div class="side-status">
+        <div id="connStatus" class="pill muted">● 연결 미확인</div>
+        <div id="runStatus" class="pill muted">Ready</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h1 id="pageTitle">홈 · 원클릭</h1>
+          <p class="muted" id="pageHint">토큰 · 계정 · 검색어 · 도메인 · 프록시 → 시작</p>
+        </div>
+        <div class="top-actions">
+          <button type="button" class="btn ghost" id="btnSave">설정 저장</button>
+          <button type="button" class="btn ghost" id="btnTest">연결 테스트</button>
+          <button type="button" class="btn warn" id="btnDry">DRY RUN</button>
+          <button type="button" class="btn danger" id="btnStop" disabled>■ 중지</button>
+          <button type="button" class="btn ops" id="btnOpsHttp">OPS 스캔</button>
+          <button type="button" class="btn primary" id="btnStart">⚔ SWARM 시작</button>
+        </div>
+      </header>
+
+      <!-- HOME -->
+      <section class="page active" id="page-home">
+        <div class="grid-2">
+          <div class="card">
+            <h2>① Octo API 토큰</h2>
+            <label class="field">
+              <span>API Token</span>
+              <input type="password" id="token" placeholder="Octo 설정 → Additional → API Token" autocomplete="off" />
+            </label>
+            <button type="button" class="btn sm ghost" id="btnToggleToken">토큰 보기/숨기기</button>
+          </div>
+          <div class="card">
+            <h2>② Google 계정 (한 줄 붙여넣기)</h2>
+            <p class="hint">형식: <code>email|비밀번호|2FA시크릿</code> · 줄마다 계정 1개</p>
+            <textarea id="accountsBulk" rows="5" placeholder="user@gmail.com|pass123|JBSWY3DPEHPK3PXP"></textarea>
+            <button type="button" class="btn sm ghost" id="btnParseAccounts">붙여넣기 반영</button>
+            <div id="accountsPreview" class="mini-list muted"></div>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <h2>③ 검색어 · 자사 도메인</h2>
+            <label class="field">
+              <span>검색어 (/ 또는 줄바꿈으로 여러 개) — 모든 동시 프로필에 공통</span>
+              <input type="text" id="keyword" placeholder="브랜드명 / 공식몰 / 강남점" />
+            </label>
+            <label class="field">
+              <span>자사 도메인 (Octo 브라우저가 클릭할 내 사이트)</span>
+              <input type="text" id="targetDomain" placeholder="mysite.com" />
+            </label>
+            <label class="field">
+              <span>링크 path 정규식 (이 path만 클릭 · 줄마다 1개)</span>
+              <input type="text" id="pathRegexQuick" placeholder="/promo/.*  또는  ^/event/\\d+" />
+            </label>
+            <label class="field">
+              <span>CTA 버튼 글자 (쉼표 구분)</span>
+              <input type="text" id="bannerText" placeholder="메뉴, 예약, 자세히 보기" />
+            </label>
+            <div class="row gap wrap">
+              <label class="field inline">
+                <span>동시 프로필</span>
+                <input type="number" id="parallelJobsHome" value="3" min="1" max="20" style="width:5rem" />
+              </label>
+              <span class="hint" style="margin:0">계정 N개면 최대 N개 Octo 창이 같이 클릭</span>
+            </div>
+          </div>
+          <div class="card">
+            <h2>④ 프록시</h2>
+            <textarea id="proxiesQuick" rows="6" placeholder="host:port:user:pass"></textarea>
+            <div class="row gap">
+              <button type="button" class="btn sm ghost" id="btnValidateProxies">검증 · 목록 반영</button>
+              <span id="proxyCount" class="muted">0개</span>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <h2>⑤ 흐름 (웹 ↔ Octo)</h2>
+          <ol class="flow-steps">
+            <li>웹에서 설정 저장 · ▶ 시작</li>
+            <li>Octo Cloud: 프로필 생성/재사용 + 프록시 주입</li>
+            <li>Octo Local: 프로필 Start → <strong>실제 Octo 브라우저 창</strong></li>
+            <li>Playwright CDP 연결 → (선택) 쿠키 주입 → 검색 → 자사 클릭</li>
+          </ol>
+          <p class="hint">Octo Browser 앱이 켜져 있어야 Local API(<code>127.0.0.1:58888</code>)가 동작합니다.</p>
+        </div>
+        <div class="card live">
+          <h2>실시간 상태 · 동시 작업</h2>
+          <div class="live-grid">
+            <div><span class="muted">단계</span><div id="liveStep">—</div></div>
+            <div><span class="muted">동시</span><div id="liveParallel">—</div></div>
+            <div><span class="muted">2FA</span><div id="live2fa">—</div></div>
+            <div><span class="muted">힌트</span><div id="liveHint">준비됨</div></div>
+          </div>
+          <div id="activeJobs" class="active-jobs muted">실행 중 프로필 없음</div>
+          <div id="otpPanel" class="otp-panel hidden">
+            <strong>2FA 코드 입력</strong>
+            <p id="otpPrompt" class="hint"></p>
+            <div class="row gap">
+              <input type="text" id="otpCode" maxlength="12" placeholder="6자리 코드" />
+              <button type="button" class="btn primary sm" id="btnSubmitOtp">제출</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- OPS CONSOLE -->
+      <section class="page" id="page-ops">
+        <div class="ops-banner">
+          <div>
+            <h2>⚔ AUTHORIZED OWN-SITE OPS</h2>
+            <p>허용된 <strong>자사 도메인</strong>만 타깃. 표면 정찰 · 부하 해머 · 멀티 프로필 스웜 · 세션 쿠키.</p>
+          </div>
+          <div class="ops-score" id="opsScoreBox">
+            <div class="ops-score-num" id="opsScore">—</div>
+            <div class="muted">보안 점수</div>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="card ops-card">
+            <h2>작전 모드</h2>
+            <label class="check"><input type="checkbox" id="opsEnabled" checked /> OPS 엔진 사용</label>
+            <label class="field">
+              <span>모드</span>
+              <select id="opsMode">
+                <option value="blitz">BLITZ — 최강 자사 압박</option>
+                <option value="swarm">SWARM — 동시 프로필 클릭 압박</option>
+                <option value="hammer">HAMMER — HTTP 부하 + 강한 브라우저</option>
+                <option value="full">FULL — recon + hammer + browser</option>
+                <option value="recon">RECON — 표면/헤더/민감경로만</option>
+                <option value="browser">BROWSER — 브라우저만 (OPS 약화)</option>
+                <option value="stealth_probe">STEALTH — 낮은 소음 프로브</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>브라우저 프리셋</span>
+              <select id="opsBrowserPreset">
+                <option value="blitz">blitz (최강 압박 · 자사 전용)</option>
+                <option value="hammer">hammer (강한 부하+클릭)</option>
+                <option value="swarm">swarm (빠른 클릭·내부링크)</option>
+                <option value="stealth_probe">stealth_probe</option>
+                <option value="normal">normal</option>
+              </select>
+            </label>
+            <div class="row gap wrap">
+              <label class="field inline">
+                <span>스웜 동시</span>
+                <input type="number" id="opsSwarmParallel" value="5" min="1" max="20" />
+              </label>
+              <label class="field inline">
+                <span>웨이브</span>
+                <input type="number" id="opsWaves" value="1" min="1" max="10" />
+              </label>
+              <label class="field inline">
+                <span>강도 1-5</span>
+                <input type="number" id="opsIntensity" value="3" min="1" max="5" />
+              </label>
+            </div>
+            <label class="check"><input type="checkbox" id="opsForceParallel" /> 동시 수를 스웜 값으로 강제</label>
+            <label class="check"><input type="checkbox" id="opsRunHttp" checked /> 시작 전 HTTP RECON/HAMMER</label>
+            <label class="check"><input type="checkbox" id="opsSkipHammer" /> HTTP 해머 스킵 (recon만)</label>
+            <div class="preset-row">
+              <button type="button" class="btn sm danger" data-ops-preset="blitz">BLITZ</button>
+              <button type="button" class="btn sm danger" data-ops-preset="swarm">SWARM</button>
+              <button type="button" class="btn sm warn" data-ops-preset="hammer">HAMMER</button>
+              <button type="button" class="btn sm ops" data-ops-preset="full">FULL</button>
+              <button type="button" class="btn sm ghost" data-ops-preset="recon">RECON</button>
+            </div>
+            <label class="check"><input type="checkbox" id="opsMultiHammer" checked /> 멀티 URL 해머 (홈+HIT 경로)</label>
+          </div>
+          <div class="card ops-card">
+            <h2>해머 · 경로 정찰</h2>
+            <div class="row gap wrap">
+              <label class="field inline">
+                <span>요청 수</span>
+                <input type="number" id="opsHammerReq" value="100" min="5" max="800" />
+              </label>
+              <label class="field inline">
+                <span>워커</span>
+                <input type="number" id="opsHammerWorkers" value="24" min="1" max="64" />
+              </label>
+              <label class="field inline">
+                <span>path 워커</span>
+                <input type="number" id="opsPathWorkers" value="16" min="1" max="40" />
+              </label>
+            </div>
+            <label class="field">
+              <span>해머 URL (비우면 https://자사도메인/)</span>
+              <input type="text" id="opsHammerUrl" placeholder="https://mysite.com/" />
+            </label>
+            <label class="field">
+              <span>추가 경로 (줄마다 · 자사만)</span>
+              <textarea id="opsExtraPaths" rows="5" placeholder="/api/v2&#10;/internal&#10;/admin/login"></textarea>
+            </label>
+            <div class="row gap">
+              <button type="button" class="btn ops" id="btnOpsRunPage">지금 HTTP OPS 실행</button>
+              <button type="button" class="btn ghost" id="btnOpsLoadLatest">최근 리포트</button>
+            </div>
+          </div>
+        </div>
+        <div class="card ops-card">
+          <h2>Findings · 킬체인 로그</h2>
+          <div id="opsFindings" class="ops-findings muted">아직 리포트 없음 — RECON/FULL 실행 후 표시</div>
+          <div id="opsLoadStats" class="mini-list muted"></div>
+        </div>
+      </section>
+
+      <!-- PROXIES -->
+      <section class="page" id="page-proxies">
+        <div class="card">
+          <h2>프록시 목록</h2>
+          <div class="row gap wrap">
+            <label class="field inline">
+              <span>타입</span>
+              <select id="proxyType">
+                <option value="http">http</option>
+                <option value="socks5">socks5</option>
+              </select>
+            </label>
+            <label class="field inline">
+              <span>로테이션</span>
+              <select id="proxyMode">
+                <option value="round_robin">round_robin</option>
+                <option value="from_selected">from_selected</option>
+                <option value="fixed">fixed</option>
+              </select>
+            </label>
+            <label class="field inline">
+              <span>시작 인덱스</span>
+              <input type="number" id="proxyStartIndex" value="0" min="0" style="width:5rem" />
+            </label>
+          </div>
+          <textarea id="proxiesText" rows="12" placeholder="host:port:user:pass&#10;socks5://user:pass@1.2.3.4:1080"></textarea>
+          <button type="button" class="btn ghost" id="btnValidateProxies2">✓ 검증 · 목록 반영</button>
+          <div id="proxyList" class="table-wrap"></div>
+        </div>
+      </section>
+
+      <!-- ACCOUNTS -->
+      <section class="page" id="page-accounts">
+        <div class="card">
+          <h2>Google 로그인</h2>
+          <div class="row gap wrap">
+            <label class="check"><input type="checkbox" id="gEnabled" checked /> 로그인 사용</label>
+            <label class="field inline">
+              <span>모드</span>
+              <select id="gMode">
+                <option value="auto">auto (자동+2FA)</option>
+                <option value="manual">manual</option>
+                <option value="skip">skip</option>
+              </select>
+            </label>
+            <label class="check"><input type="checkbox" id="otpEnabled" checked /> 2FA 자동(TOTP)</label>
+          </div>
+          <p class="hint">계정 표 또는 홈 붙여넣기. 시크릿이 있으면 팝업 없이 자동 인증.</p>
+          <div class="table-wrap">
+            <table id="accTable">
+              <thead>
+                <tr>
+                  <th>email</th><th>password</th><th>profile</th><th>otp_secret</th><th>notes</th><th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="row gap">
+            <button type="button" class="btn sm ghost" id="btnAddAcc">행 추가</button>
+            <button type="button" class="btn sm ghost" id="btnClearAcc">비우기</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- SEARCH -->
+      <section class="page" id="page-search">
+        <div class="grid-2">
+          <div class="card">
+            <h2>검색 키워드 · 자사 사이트</h2>
+            <p class="hint">웹에서 설정한 키워드/도메인이 <strong>모든 동시 Octo 프로필</strong>에 동일 적용됩니다.</p>
+            <label class="check"><input type="checkbox" id="searchEnabled" checked /> 검색 ON (SERP → 자사 클릭)</label>
+            <label class="field">
+              <span>검색어 목록 (줄마다 1개, 폴백 순서)</span>
+              <textarea id="keywordsText" rows="6" placeholder="카지노사이트&#10;카지노사이트순위&#10;브랜드 공식"></textarea>
+            </label>
+            <label class="field">
+              <span>자사 도메인 목록 (줄마다 1개)</span>
+              <textarea id="domainsText" rows="4" placeholder="mysite.com"></textarea>
+            </label>
+            <label class="field">
+              <span>★ 링크 path 정규식 (키워드 검색 후 이 path만 클릭)</span>
+              <textarea id="pathRegexText" rows="4" placeholder="/promo/.*&#10;^/event/[0-9]+&#10;re:product/\\d+"></textarea>
+            </label>
+            <p class="hint">예: <code>/promo/.*</code> · <code>^/board/view</code> · 전체 URL이면 아래 URL 정규식 사용</p>
+            <label class="field">
+              <span>URL 정규식 (전체 링크 · 선택)</span>
+              <textarea id="urlRegexText" rows="2" placeholder="https?://(www\\.)?mysite\\.com/promo/"></textarea>
+            </label>
+            <label class="field">
+              <span>path 글자 타겟 (정규식 말고 단순 path · 선택)</span>
+              <textarea id="pathTargetsText" rows="2" placeholder="/promo&#10;/event"></textarea>
+            </label>
+            <label class="field">
+              <span>path 제외 (클릭 안 함)</span>
+              <textarea id="pathExcludeText" rows="2" placeholder="/login&#10;/admin"></textarea>
+            </label>
+            <label class="check"><input type="checkbox" id="requireRegex" checked /> 정규식 필수 (지정 시 매칭 링크만 클릭)</label>
+            <div class="row gap wrap">
+              <label class="field inline">
+                <span>SERP 페이지</span>
+                <input type="number" id="maxSerp" value="3" min="1" max="10" />
+              </label>
+              <label class="field inline">
+                <span>재방문</span>
+                <input type="number" id="revisit" value="1" min="0" max="5" />
+              </label>
+              <label class="field inline">
+                <span>클릭/검색어</span>
+                <input type="number" id="maxClicks" value="1" min="1" max="10" />
+              </label>
+            </div>
+            <label class="check"><input type="checkbox" id="skipAds" checked /> 광고 결과 스킵</label>
+            <label class="check"><input type="checkbox" id="requireDomain" checked /> 자사 도메인만</label>
+            <label class="check"><input type="checkbox" id="warmup" checked /> 워밍업</label>
+          </div>
+          <div class="card">
+            <h2>사람처럼 행동</h2>
+            <div class="row gap wrap">
+              <label class="field inline">
+                <span>체류 min(ms)</span>
+                <input type="number" id="dwellMin" value="4000" />
+              </label>
+              <label class="field inline">
+                <span>체류 max(ms)</span>
+                <input type="number" id="dwellMax" value="12000" />
+              </label>
+            </div>
+            <label class="check"><input type="checkbox" id="humanScroll" checked /> 스크롤</label>
+            <label class="check"><input type="checkbox" id="mouseWander" checked /> 마우스 이동</label>
+            <label class="check"><input type="checkbox" id="readPauses" checked /> 읽기 멈춤</label>
+            <label class="field">
+              <span>직접 URL (검색 OFF 시 · Octo 창에서 이동)</span>
+              <input type="text" id="directUrl" placeholder="https://mysite.com/" />
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <!-- BULK SITES -->
+      <section class="page" id="page-bulk">
+        <div class="card ops-card">
+          <h2>대량 자사 사이트 (1,000 ~ 100,000+)</h2>
+          <p class="hint">
+            주소(URL)·도메인·path를 한 줄씩 넣으세요. Octo 프록시 IP로 검색·클릭합니다.
+            <strong>본인 소유 사이트 방어 테스트</strong> 전용입니다.
+          </p>
+          <label class="field">
+            <span>대량 붙여넣기 (도메인 / 전체URL / path)</span>
+            <textarea id="bulkUrlsText" rows="16" placeholder="mysite.com
+https://mysite.com/promo/summer
+www.mysite2.com/event/1
+/promo/.*
+shop.mybrand.com
+# 주석 가능 — 수천~수만 줄 OK"></textarea>
+          </label>
+          <div class="row gap wrap">
+            <button type="button" class="btn ops" id="btnParseBulk">목록 분석</button>
+            <span id="bulkStats" class="muted">아직 분석 안 함</span>
+          </div>
+          <div id="bulkPreview" class="mini-list muted"></div>
+          <h3 style="margin-top:1rem;font-size:0.95rem">파일로 넣기 (프로젝트 폴더)</h3>
+          <ul class="hint" style="margin:0.4rem 0 0 1rem">
+            <li><code>urls.txt</code> / <code>sites.txt</code> — 전체 URL·도메인 섞어 넣기</li>
+            <li><code>domains.txt</code> — 도메인만</li>
+            <li><code>paths.txt</code> — path·정규식</li>
+            <li><code>keywords.txt</code> — 검색어</li>
+            <li><code>accounts.csv</code> — email,password,otp_secret (구글+2FA)</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h2>권장 운영 (대규모)</h2>
+          <ol class="flow-steps">
+            <li>계정 여러 개: <code>email|비번|2FA시크릿</code> (홈 ②)</li>
+            <li>프록시 = 계정 수 이상 (Octo 출구 IP)</li>
+            <li>검색어 + 위 대량 URL</li>
+            <li>동시 프로필 3~10 · SWARM 시작</li>
+            <li>각 Octo 창: 로그인→2FA 자동→검색→목록 매칭 링크만 클릭</li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- COOKIES -->
+      <section class="page" id="page-cookies">
+        <div class="card">
+          <h2>쿠키 주입 (자사 사이트 테스트)</h2>
+          <p class="hint">
+            Octo 브라우저 컨텍스트에 쿠키를 넣습니다. <strong>본인 사이트 QA</strong>용입니다.
+            Google/타사 계정 탈취 목적이 아닙니다.
+          </p>
+          <label class="check"><input type="checkbox" id="cookieEnabled" /> 쿠키 주입 사용</label>
+          <div class="row gap wrap">
+            <label class="field inline">
+              <span>주입 시점</span>
+              <select id="cookieWhen">
+                <option value="on_site">자사 사이트 도착 직후 (권장)</option>
+                <option value="after_connect">Octo CDP 연결 직후</option>
+                <option value="before_search">Google 검색 직전</option>
+                <option value="replace_login">세션 쿠키 모드 (Google 로그인 스킵)</option>
+              </select>
+            </label>
+          </div>
+          <div class="grid-2">
+            <label class="field">
+              <span>도메인 (예: mysite.com)</span>
+              <input type="text" id="cookieDomain" placeholder="mysite.com" />
+            </label>
+            <label class="field">
+              <span>URL / 워밍 URL</span>
+              <input type="text" id="cookieUrl" placeholder="https://mysite.com/" />
+            </label>
+          </div>
+          <label class="field">
+            <span>쿠키 JSON 또는 name=value (줄마다)</span>
+            <textarea id="cookiesText" rows="10" placeholder='[
+  {"name":"session","value":"test-token","domain":".mysite.com","path":"/"}
+]
+또는
+session=test-token
+user_id=123'></textarea>
+          </label>
+          <div class="row gap wrap">
+            <label class="check"><input type="checkbox" id="cookieClearFirst" /> 주입 전 기존 쿠키 삭제</label>
+            <label class="check"><input type="checkbox" id="cookieWarm" checked /> 워밍 URL 이동</label>
+            <label class="check"><input type="checkbox" id="cookieReload" checked /> 사이트 도착 후 리로드</label>
+          </div>
+          <button type="button" class="btn sm ghost" id="btnParseCookies">쿠키 파싱 미리보기</button>
+          <div id="cookiePreview" class="mini-list muted"></div>
+        </div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section class="page" id="page-settings">
+        <div class="card">
+          <h2>동시 실행 (멀티 Octo 프로필)</h2>
+          <p class="hint">
+            값이 3이면 계정 큐에서 최대 3개 프로필이 <strong>동시에</strong> Start → 검색 → 클릭합니다.
+            PC/Octo 요금제 한도에 맞게 조절하세요.
+          </p>
+          <div class="row gap wrap">
+            <label class="field inline">
+              <span>동시 프로필 수</span>
+              <input type="number" id="parallelJobs" value="3" min="1" max="20" style="width:5rem" />
+            </label>
+            <label class="field inline">
+              <span>시작 간격(초)</span>
+              <input type="number" id="staggerStart" value="1.5" min="0" step="0.5" style="width:5rem" />
+            </label>
+            <label class="field inline">
+              <span>순차 대기(초, 동시=1일 때)</span>
+              <input type="number" id="delayJobs" value="15" style="width:5rem" />
+            </label>
+          </div>
+        </div>
+        <div class="card">
+          <h2>실행 · API · Octo 연동</h2>
+          <div class="grid-2">
+            <label class="field">
+              <span>Cloud API</span>
+              <input type="text" id="cloudBase" />
+            </label>
+            <label class="field">
+              <span>Local API (Octo 앱)</span>
+              <input type="text" id="localBase" />
+            </label>
+            <label class="field">
+              <span>시작 타임아웃(초)</span>
+              <input type="number" id="startTimeout" value="120" />
+            </label>
+            <label class="field">
+              <span>최대 작업 수 (0=전부)</span>
+              <input type="number" id="maxJobs" value="0" />
+            </label>
+          </div>
+          <label class="check"><input type="checkbox" id="reuseProfiles" checked /> 기존 프로필 재사용</label>
+          <label class="check"><input type="checkbox" id="createMissing" checked /> 없으면 생성</label>
+          <label class="check"><input type="checkbox" id="stopAfter" checked /> 작업 후 프로필 중지</label>
+          <label class="check"><input type="checkbox" id="headless" /> headless (권장 OFF · Octo 창 보기)</label>
+        </div>
+        <div class="card ops-card">
+          <h2>Octo 프로필 · 모바일 IP · 트래픽 로그</h2>
+          <p class="hint">
+            Android 핑거프린트 + 프록시 출구 IP를 매칭 점수로 로그에 남깁니다.
+            Google 로그인·SERP 클릭마다 <strong>실제 네트워크 요청 수</strong>를 집계합니다.
+          </p>
+          <div class="grid-2">
+            <label class="field">
+              <span>프로필 OS (핑거프린트)</span>
+              <select id="profileOs">
+                <option value="android">android (모바일)</option>
+                <option value="win">win (Windows)</option>
+                <option value="mac">mac (macOS)</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Android OS 버전</span>
+              <input type="text" id="osVersion" value="14" placeholder="12~15" />
+            </label>
+            <label class="field">
+              <span>디바이스 모델 (선택)</span>
+              <input type="text" id="deviceModel" placeholder="비우면 Octo 자동" />
+            </label>
+            <label class="field">
+              <span>태그 (쉼표/줄)</span>
+              <input type="text" id="profileTags" value="mobile,auto" />
+            </label>
+          </div>
+          <label class="check"><input type="checkbox" id="mobileFingerprint" checked /> 모바일(Android) 핑거프린트 강제</label>
+          <label class="check"><input type="checkbox" id="matchMobileIp" checked /> 프로필↔출구 IP 매칭 로그</label>
+          <label class="check"><input type="checkbox" id="trafficMetrics" checked /> 실제 트래픽·클릭당 요청 수 로그</label>
+        </div>
+      </section>
+
+      <!-- LOGS -->
+      <section class="page" id="page-logs">
+        <div class="card log-card">
+          <div class="row between">
+            <h2>실행 로그</h2>
+            <button type="button" class="btn sm ghost" id="btnClearLogs">로그 지우기</button>
+          </div>
+          <pre id="logView" class="log-view"></pre>
+        </div>
+      </section>
+
+      <!-- HELP -->
+      <section class="page" id="page-help">
+        <div class="card prose">
+          <h2>30초 사용법</h2>
+          <ol>
+            <li><strong>Octo Browser</strong> 실행 후 로그인</li>
+            <li>홈 ① <strong>API 토큰</strong> 입력 → 연결 테스트</li>
+            <li>② <code>email|비밀번호|2FA시크릿</code> 붙여넣기</li>
+            <li>③ 검색어 · 자사 도메인 · CTA 글자</li>
+            <li>④ 프록시 붙여넣기 → 검증</li>
+            <li><strong>▶ 시작</strong> (또는 DRY RUN으로 배정만 확인)</li>
+          </ol>
+          <h3>허용 범위</h3>
+          <ul>
+            <li>자사 사이트 검색 노출·CTA 점검</li>
+            <li>설정한 자사 도메인만 클릭</li>
+          </ul>
+          <h3>금지</h3>
+          <ul>
+            <li>광고·스폰서 클릭 조작</li>
+            <li>경쟁사·타인 사이트 대상</li>
+            <li>무단 트래픽·부정 클릭</li>
+          </ul>
+          <h3>OPS (자사 전용 공격형 QA)</h3>
+          <ul>
+            <li><strong>SWARM</strong> — 멀티 Octo 프로필 동시 클릭 압박</li>
+            <li><strong>HAMMER</strong> — HTTP 부하 + 지연/5xx 측정</li>
+            <li><strong>RECON</strong> — 헤더·쿠키 플래그·민감 경로·폼 표면</li>
+            <li><strong>쿠키 주입</strong> — 자사 세션 시나리오</li>
+            <li>허용 도메인 밖 URL은 <strong>하드 차단</strong></li>
+          </ul>
+          <h3>웹 UI vs 예전 GUI</h3>
+          <p>v2부터 기본 실행은 <strong>브라우저 웹 UI</strong>입니다. 핵심 자동화(Octo API + Playwright)는 동일합니다.
+          예전 Tkinter GUI는 <code>python main.py --gui</code> 로 실행할 수 있습니다.</p>
+          <p>개발 이력·AI 협업 기록: 저장소의 <code>docs/AI_DEVELOPMENT.md</code></p>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div id="toast" class="toast hidden"></div>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
