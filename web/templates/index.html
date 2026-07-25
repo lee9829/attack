@@ -113,7 +113,13 @@
             <li>Octo Local: 프로필 Start → <strong>실제 Octo 브라우저 창</strong></li>
             <li>Playwright CDP 연결 → (선택) 쿠키 주입 → 검색 → 자사 클릭</li>
           </ol>
-          <p class="hint">Octo Browser 앱이 켜져 있어야 Local API(<code>127.0.0.1:58888</code>)가 동작합니다.</p>
+          <p class="hint">
+            Octo Browser 앱이 켜져 있어야 Local API(<code>127.0.0.1:58888</code>)가 동작합니다.
+            <strong>Cloud OK · Local OFF</strong> 이고 웹이 VPS(원격)면 정상입니다 —
+            프로필 실행·자동화는 <strong>Octo가 설치된 Windows PC</strong>에서
+            <code>웹시작.bat</code> / <code>python main.py --web</code> 으로 돌리세요.
+            (서버의 127.0.0.1 ≠ 내 PC의 Octo)
+          </p>
         </div>
         <div class="card live">
           <h2>실시간 상태 · 동시 작업</h2>

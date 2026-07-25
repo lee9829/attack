@@ -335,6 +335,12 @@ async def api_test_connection(body: TestConnBody):
             local_msg = f"Local OK (user={user or 'ok'})"
         except OctoError as exc:
             local_msg = f"Local OFF: {exc}"
+            lb = (body.local_base or "").strip().lower()
+            if ("127.0.0.1" in lb or "localhost" in lb) and not local_ok:
+                local_msg += (
+                    " | 원격 서버에서 접속 중이면 Local API는 항상 실패합니다. "
+                    "Octo PC에서 웹을 실행하세요 (웹시작.bat)."
+                )
         status = (
             f"● Online — Cloud OK · {local_msg}"
             if local_ok

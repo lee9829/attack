@@ -557,8 +557,16 @@ class OctoClient:
                 timeout=timeout or self.timeout,
             )
         except requests.RequestException as exc:
+            local_hint = ""
+            if "127.0.0.1" in url or "localhost" in url:
+                local_hint = (
+                    " ※ 웹 UI가 원격 서버(VPS)에서 돌면 127.0.0.1 은 서버 자신이라 "
+                    "Windows PC의 Octo에 닿지 않습니다. Octo가 설치된 PC에서 "
+                    "`python main.py --web` 또는 `웹시작.bat` 으로 실행하세요."
+                )
             raise OctoError(
-                f"로컬 API 연결 실패 ({url}). Octo Browser 데스크톱 앱을 실행하고 로그인했는지 확인하세요. 원인: {exc}"
+                f"로컬 API 연결 실패 ({url}). Octo Browser 데스크톱 앱을 실행하고 "
+                f"로그인했는지 확인하세요.{local_hint} 원인: {exc}"
             ) from exc
 
         if resp.status_code >= 400:
