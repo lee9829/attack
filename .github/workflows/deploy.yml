@@ -26,6 +26,7 @@ jobs:
               APP_DIR="/opt/octo-google-site-automation"
             fi
             cd "$APP_DIR"
+            git config --global --add safe.directory "$APP_DIR" 2>/dev/null || true
             # Prefer bash deploy script; fall back to PowerShell on Windows OpenSSH
             if [ -f deploy/deploy.sh ]; then
               bash deploy/deploy.sh

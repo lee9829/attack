@@ -54,3 +54,9 @@ htmlcov/
 # Packaging artifacts
 *.zip
 *.exe
+
+# Local one-shot server bootstrap helpers (may use machine-local secrets via env)
+deploy/_bootstrap_remote.py
+deploy/_finish_remote.py
+deploy/_verify_remote.py
+GitHub-Connect-Chrome.bat
