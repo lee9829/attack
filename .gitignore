@@ -60,4 +60,10 @@ htmlcov/
 deploy/_bootstrap_remote.py
 deploy/_finish_remote.py
 deploy/_verify_remote.py
+deploy/_check_vps.py
+deploy/_server_engine_setup.py
+deploy/_set_web_auth.py
 GitHub-Connect-Chrome.bat
+
+# Agent secrets for a specific worker (example is committed)
+agent/config.env
