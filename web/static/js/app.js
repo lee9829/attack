@@ -13,17 +13,23 @@
   };
 
   const titles = {
-    home: ["매크로 시작", "구글 로그인 · 검색 · 내 사이트 클릭 · 반복"],
-    ops: ["OPS (고급)", "자사 정찰 · 부하 (일반 사용 불필요)"],
-    proxies: ["프록시", "host:port:id:pw 붙여넣기"],
-    accounts: ["Google 계정", "이메일 · 비밀번호 · 2FA"],
-    search: ["검색 상세", "정규식 · 경로 · 체류 시간"],
-    bulk: ["대량 URL", "여러 사이트 URL 일괄"],
-    cookies: ["쿠키", "세션 쿠키 주입"],
-    settings: ["고급 설정", "엔진 · 동시 실행 · API"],
-    logs: ["실행 로그", "실시간 진행 상황"],
-    help: ["사용법", "PC 에이전트 + 매크로"],
+    home: ["통제판", "웹에서 START/STOP · PC Octo가 실행 (오토 매크로)"],
+    ops: ["OPS", "고급 정찰 (일반 매크로 불필요)"],
+    proxies: ["프록시", "host:port:id:pw"],
+    accounts: ["계정", "Google 로그인용"],
+    search: ["검색 상세", "정규식 · 체류"],
+    bulk: ["대량 URL", "일괄 URL"],
+    cookies: ["쿠키", "세션 주입"],
+    settings: ["설정", "엔진 · API · 동시 실행"],
+    logs: ["로그", "실시간 매크로 로그"],
+    help: ["도움말", "Octo 오토 사용법"],
   };
+
+  function setMacroStep(step) {
+    $$(".macro-step").forEach((el) => {
+      el.classList.toggle("active", el.dataset.mstep === step);
+    });
+  }
 
   function toast(msg, type = "ok") {
     const el = $("#toast");
@@ -157,7 +163,8 @@
       octo_email: $("#octoEmail") ? $("#octoEmail").value.trim() : "",
       octo_password: $("#octoPassword") ? $("#octoPassword").value : "",
       octo_auto_login: $("#octoAutoLogin") ? $("#octoAutoLogin").checked : true,
-      browser_engine: $("#browserEngine") ? $("#browserEngine").value : "agent",
+      // 통제판 기본: 항상 PC Octo 에이전트 (디아블로 오토식 웹 통제)
+      browser_engine: $("#browserEngine")?.value || "agent",
       proxy_type: ($("#proxyType")?.value || "http"),
       proxy_mode: $("#proxyMode").value,
       proxy_start_index: Number($("#proxyStartIndex").value || 0),
@@ -638,22 +645,26 @@
 
   async function refreshAgentStatus() {
     const els = [$("#agentStatus"), $("#agentStatusHome")].filter(Boolean);
-    if (!els.length) return;
+    const led = $("#ledAgent");
     try {
       const data = await api("/api/agent/status");
       const a = data.agent || {};
       const text = a.online
-        ? `온라인 (${a.name || "PC"}) · 매크로 가능`
-        : "오프라인 — OctoAgent.exe 를 실행하세요";
+        ? `연결됨 (${a.name || "PC"})`
+        : "끊김 — OctoAgent.exe 실행 필요";
       const color = a.online ? "#3dd68c" : "#f5a524";
       els.forEach((el) => {
         el.textContent = text;
         el.style.color = color;
       });
+      if (led) {
+        led.className = "led " + (a.online ? "on" : "warn");
+      }
     } catch (e) {
       els.forEach((el) => {
-        el.textContent = "상태 확인 실패";
+        el.textContent = "확인 실패";
       });
+      if (led) led.className = "led off";
     }
   }
 
@@ -661,8 +672,8 @@
     try {
       const body = {
         octo_api_token: $("#token").value.trim(),
-        cloud_base: $("#cloudBase").value.trim(),
-        local_base: $("#localBase").value.trim(),
+        cloud_base: ($("#cloudBase")?.value || "https://app.octobrowser.net/api/v2/automation").trim(),
+        local_base: ($("#localBase")?.value || "http://127.0.0.1:58888/api").trim(),
         octo_email: $("#octoEmail") ? $("#octoEmail").value.trim() : "",
         octo_password: $("#octoPassword") ? $("#octoPassword").value : "",
         octo_auto_login: $("#octoAutoLogin") ? $("#octoAutoLogin").checked : true,
@@ -672,14 +683,21 @@
         body: JSON.stringify(body),
       });
       const el = $("#connStatus");
-      el.textContent = data.status;
-      el.className = `pill ${data.local_ok ? "ok" : "warn"}`;
-      toast(data.status);
+      el.textContent = data.cloud_ok ? "● Cloud OK" : data.status;
+      el.className = `pill ${data.cloud_ok ? "ok" : "warn"}`;
+      const ledC = $("#ledCloud");
+      const cloudTxt = $("#cloudLedText");
+      if (ledC) ledC.className = "led " + (data.cloud_ok ? "on" : "warn");
+      if (cloudTxt) cloudTxt.textContent = data.cloud_ok ? "OK" : "실패";
+      toast(data.cloud_ok ? "Cloud 연결 OK · 매크로는 PC OctoAgent 사용" : data.status);
       refreshAgentStatus();
     } catch (e) {
       const el = $("#connStatus");
       el.textContent = `● Offline — ${e.message}`;
       el.className = "pill err";
+      const ledC = $("#ledCloud");
+      if (ledC) ledC.className = "led off";
+      if ($("#cloudLedText")) $("#cloudLedText").textContent = "실패";
       toast(e.message, "err");
     }
   }
@@ -795,15 +813,32 @@
     if (!s) return;
     setRunning(!!s.running);
     const rs = $("#runStatus");
-    rs.textContent = s.status || "Ready";
+    rs.textContent = s.status || "대기";
     rs.className = `pill ${s.running ? "ok" : s.error ? "err" : "muted"}`;
+
+    const ledM = $("#ledMacro");
+    const macroTxt = $("#macroLedText");
+    if (ledM) {
+      ledM.className = "led " + (s.running ? "run" : s.error ? "warn" : "off");
+    }
+    if (macroTxt) {
+      macroTxt.textContent = s.running ? "실행 중" : s.error ? "오류" : "대기";
+    }
 
     const p = s.progress || {};
     const parallel = p.parallel || s.progress?.parallel || $("#parallelJobs")?.value || "1";
+    const loop = p.loop || "";
     if ($("#liveParallel")) {
-      $("#liveParallel").textContent = `×${parallel}`;
+      $("#liveParallel").textContent = loop
+        ? `L${loop} · ×${parallel}`
+        : `×${parallel}`;
     }
-    if (p.phase === "start" || p.job) {
+    if (p.phase === "agent_queue" || p.phase === "agent") {
+      $("#liveStep").textContent = "PC Octo로 전달";
+      $("#liveHint").textContent = s.status || "에이전트 대기";
+      setMacroStep("login");
+    }
+    if (p.phase === "start" || p.job || p.phase === "browser") {
       $("#liveStep").textContent = p.total
         ? `작업 ${p.job || "-"} / ${p.total}`
         : `작업 ${p.job || "-"}`;
@@ -811,14 +846,23 @@
       $("#liveHint").textContent =
         `성공 ${p.success ?? 0} · 실패 ${p.fail ?? 0}` +
         (p.email || p.profile ? ` · ${p.email || p.profile}` : "");
+      setMacroStep(p.phase === "browser" ? "search" : "click");
     }
     if (p.phase === "session_done") {
-      $("#liveStep").textContent = "전체 완료";
+      $("#liveStep").textContent = "완료";
       $("#liveHint").textContent = s.status || "완료";
+      setMacroStep("loop");
     }
     if (p.phase === "session_start") {
       $("#liveStep").textContent = `동시 ${p.parallel || parallel} 시작`;
-      $("#liveHint").textContent = `총 ${p.total || "?"} 프로필 큐`;
+      $("#liveHint").textContent = `총 ${p.total || "?"} · 회차 ${p.loop || 1}`;
+      setMacroStep("login");
+    }
+    if (s.running && !p.phase) {
+      setMacroStep("login");
+    }
+    if (!s.running && !s.error) {
+      $$(".macro-step").forEach((el) => el.classList.remove("active"));
     }
 
     const act = p.active_jobs || [];

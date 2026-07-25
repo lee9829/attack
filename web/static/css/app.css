@@ -92,6 +92,105 @@ body {
   opacity: 0.65;
   font-size: 0.82rem;
 }
+
+/* Diablo-like control deck */
+.control-deck {
+  display: grid;
+  grid-template-columns: 1.4fr 0.9fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 1.1rem 1.2rem;
+  background: linear-gradient(145deg, #121820 0%, #0d1218 55%, #151a12 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: inset 0 0 0 1px rgba(61, 214, 140, 0.08);
+}
+.control-left { display: flex; flex-direction: column; gap: 0.9rem; }
+.control-right {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  justify-content: center;
+  align-items: stretch;
+}
+.led-row { display: flex; flex-wrap: wrap; gap: 0.85rem; }
+.led-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 9.5rem;
+  padding: 0.45rem 0.6rem;
+  background: rgba(0,0,0,0.35);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+.led {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #555;
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.06);
+  flex-shrink: 0;
+}
+.led.on {
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+}
+.led.warn {
+  background: var(--warn);
+  box-shadow: 0 0 10px rgba(240, 180, 41, 0.55);
+}
+.led.off { background: #3a3f4a; }
+.led.run {
+  background: var(--blue);
+  box-shadow: 0 0 12px rgba(91, 157, 255, 0.7);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+.led-label { font-size: 0.72rem; color: var(--muted); }
+.led-val { font-size: 0.88rem; font-weight: 600; }
+.macro-path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+.macro-step {
+  padding: 0.35rem 0.55rem;
+  border-radius: 8px;
+  background: #1a2030;
+  border: 1px solid var(--border);
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.macro-step.active {
+  color: #0a0c10;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+.macro-arrow { color: var(--muted); font-size: 0.85rem; }
+.control-hint { margin: 0; }
+.btn-start-xl, .btn-stop-xl {
+  font-size: 1.15rem;
+  font-weight: 800;
+  padding: 0.85rem 1rem;
+  letter-spacing: 0.04em;
+}
+.btn-lg { font-weight: 700; min-width: 7rem; }
+.live-mini {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+@media (max-width: 960px) {
+  .control-deck { grid-template-columns: 1fr; }
+}
+
 .nav-btn.active {
   background: rgba(61, 214, 140, 0.12);
   border-color: rgba(61, 214, 140, 0.35);
