@@ -18,6 +18,7 @@ env/
 # Local secrets & runtime data (do NOT commit)
 .env
 .env.*
+web_auth.env
 config.json
 proxies.txt
 accounts.csv

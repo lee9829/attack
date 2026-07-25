@@ -113,6 +113,15 @@ Secrets가 비어 있으면 워크플로는 **실행되지 않습니다** (로�
 | `OCTO_HOST` | `127.0.0.1` | 서버 공개 시 `0.0.0.0` |
 | `OCTO_PORT` | `8787` | 웹 포트 |
 | `OCTO_NO_BROWSER` | (off) | `1` 이면 브라우저 자동 실행 안 함 |
+| `OCTO_WEB_USER` | (없음) | 웹 로그인 아이디 (설정 시 Basic Auth) |
+| `OCTO_WEB_PASSWORD` | (없음) | 웹 로그인 비밀번호 |
+
+또는 서버에 `web_auth.env` 파일 (Git 제외):
+
+```bash
+OCTO_WEB_USER=admin
+OCTO_WEB_PASSWORD=strong-password-here
+```
 
 ```bash
 OCTO_HOST=0.0.0.0 OCTO_NO_BROWSER=1 python3 main.py --web

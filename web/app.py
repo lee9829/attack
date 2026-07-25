@@ -8,17 +8,22 @@ Core automation still uses Octo Browser + Playwright CDP.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
+import os
+import secrets
 import sys
 import webbrowser
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
 # ensure project root on path when launched as module
 _WEB_DIR = Path(__file__).resolve().parent
@@ -38,10 +43,72 @@ from web.config_io import (  # noqa: E402
 from web.job_manager import JobManager  # noqa: E402
 from src.octo_client import OctoClient, OctoError  # noqa: E402
 
-APP_VERSION = "2.3.0"
+APP_VERSION = "2.3.1"
 BASE_DIR = _ROOT
 
 manager = JobManager(BASE_DIR)
+
+
+def _load_web_auth() -> Tuple[Optional[str], Optional[str]]:
+    """
+    Web UI login credentials.
+    Priority:
+      1) OCTO_WEB_USER / OCTO_WEB_PASSWORD env
+      2) web_auth.env file next to project root (KEY=VALUE lines)
+    If either is empty → auth disabled (local open mode).
+    """
+    user = (os.environ.get("OCTO_WEB_USER") or "").strip()
+    password = (os.environ.get("OCTO_WEB_PASSWORD") or "").strip()
+    if user and password:
+        return user, password
+
+    env_path = BASE_DIR / "web_auth.env"
+    if env_path.is_file():
+        data: Dict[str, str] = {}
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            data[k.strip()] = v.strip().strip('"').strip("'")
+        user = (data.get("OCTO_WEB_USER") or user).strip()
+        password = (data.get("OCTO_WEB_PASSWORD") or password).strip()
+    if user and password:
+        return user, password
+    return None, None
+
+
+class BasicAuthMiddleware(BaseHTTPMiddleware):
+    """HTTP Basic Auth for the whole panel when credentials are configured."""
+
+    async def dispatch(self, request: Request, call_next):
+        # health can stay public for uptime checks
+        if request.url.path in ("/api/health", "/favicon.ico"):
+            return await call_next(request)
+
+        user, password = _load_web_auth()
+        if not user or not password:
+            return await call_next(request)
+
+        header = request.headers.get("Authorization") or ""
+        ok = False
+        if header.startswith("Basic "):
+            try:
+                raw = base64.b64decode(header[6:].strip()).decode("utf-8")
+                u, p = raw.split(":", 1)
+                ok = secrets.compare_digest(u, user) and secrets.compare_digest(p, password)
+            except Exception:
+                ok = False
+
+        if not ok:
+            return Response(
+                content="Authentication required",
+                status_code=401,
+                headers={"WWW-Authenticate": 'Basic realm="Octo Web Panel"'},
+                media_type="text/plain",
+            )
+        return await call_next(request)
+
 
 app = FastAPI(
     title="Octo Google Site Automation",
@@ -49,6 +116,8 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url=None,
 )
+
+app.add_middleware(BasicAuthMiddleware)
 
 app.mount("/static", StaticFiles(directory=str(_WEB_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(_WEB_DIR / "templates"))
@@ -427,7 +496,13 @@ async def api_logs_stream(after: int = 0):
 
 @app.get("/api/health")
 async def health():
-    return {"ok": True, "version": APP_VERSION, "mode": "web"}
+    user, password = _load_web_auth()
+    return {
+        "ok": True,
+        "version": APP_VERSION,
+        "mode": "web",
+        "auth_enabled": bool(user and password),
+    }
 
 
 def create_app(base_dir: Optional[Path] = None) -> FastAPI:
@@ -456,6 +531,11 @@ def run_web(
     url = f"http://{host}:{port}/"
     print(f"[Web] Octo Automation v{APP_VERSION}")
     print(f"[Web] 브라우저에서 열기: {url}")
+    wu, wp = _load_web_auth()
+    if wu and wp:
+        print(f"[Web] 로그인 보호 ON (user={wu})")
+    else:
+        print("[Web] 로그인 보호 OFF (OCTO_WEB_USER/PASSWORD 미설정)")
     print("[Web] 중지: Ctrl+C")
     if open_browser:
         try:
