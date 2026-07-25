@@ -154,6 +154,9 @@
       octo_api_token: $("#token").value.trim(),
       cloud_base: $("#cloudBase").value.trim(),
       local_base: $("#localBase").value.trim(),
+      octo_email: $("#octoEmail") ? $("#octoEmail").value.trim() : "",
+      octo_password: $("#octoPassword") ? $("#octoPassword").value : "",
+      octo_auto_login: $("#octoAutoLogin") ? $("#octoAutoLogin").checked : true,
       proxy_type: $("#proxyType").value,
       proxy_mode: $("#proxyMode").value,
       proxy_start_index: Number($("#proxyStartIndex").value || 0),
@@ -296,6 +299,9 @@
     $("#token").value = cfg.octo_api_token || "";
     $("#cloudBase").value = cfg.cloud_base || "";
     $("#localBase").value = cfg.local_base || "";
+    if ($("#octoEmail")) $("#octoEmail").value = cfg.octo_email || "";
+    if ($("#octoPassword")) $("#octoPassword").value = cfg.octo_password || "";
+    if ($("#octoAutoLogin")) $("#octoAutoLogin").checked = cfg.octo_auto_login !== false;
     $("#proxyType").value = cfg.proxy_type || "http";
     $("#proxyMode").value = cfg.proxy_mode || "round_robin";
     $("#proxyStartIndex").value = cfg.proxy_start_index ?? 0;
@@ -621,6 +627,9 @@
         octo_api_token: $("#token").value.trim(),
         cloud_base: $("#cloudBase").value.trim(),
         local_base: $("#localBase").value.trim(),
+        octo_email: $("#octoEmail") ? $("#octoEmail").value.trim() : "",
+        octo_password: $("#octoPassword") ? $("#octoPassword").value : "",
+        octo_auto_login: $("#octoAutoLogin") ? $("#octoAutoLogin").checked : true,
       };
       const data = await api("/api/test-connection", {
         method: "POST",

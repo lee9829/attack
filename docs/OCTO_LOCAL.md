@@ -1,60 +1,68 @@
-# Cloud OK · Local OFF 설명
+# Octo API 구조 (Cloud + Local Client)
 
-## 증상
+Octo 공식 문서 기준, 자동화는 **두 API**를 같이 씁니다.
 
-```
-Cloud OK · Local OFF: 로컬 API 연결 실패 (http://127.0.0.1:58888/api/...)
-```
+| API | 주소 | 하는 일 |
+|-----|------|---------|
+| **Cloud API** | `https://app.octobrowser.net/api/v2/automation` | 프로필 생성/수정/삭제, 프록시, 태그, force_stop (토큰) |
+| **Local Client API** | `http://127.0.0.1:58888/api` | **프로필 Start/Stop**, CDP `ws_endpoint` 반환 |
 
-Octo Browser를 켰는데도 Local이 OFF로 나옵니다.
+Cloud API만으로는 브라우저를 띄울 수 없습니다.  
+`POST /profiles/start` 는 **Local Client** 전용입니다  
+(문서: Local Client listens on `127.0.0.1:58888` only).
 
-## 원인
+## VPS에서 “웹 API처럼” 쓰는 방법 (권장)
 
-| 구성 요소 | 어디서 도나 |
-|-----------|-------------|
-| 웹 UI (지금 VPS) | `66.29.149.197` Ubuntu 서버 |
-| Octo Browser 데스크톱 | **내 Windows PC** |
-| Local API 주소 | `127.0.0.1:58888` = **그 프로그램이 돌아가는 컴퓨터 자신** |
-
-웹이 **서버**에서 돌면 `127.0.0.1:58888` 은 **서버 안**을 가리킵니다.  
-PC에 Octo를 켜 둬도 서버는 PC 포트를 보지 못합니다.
-
-Cloud API는 인터넷으로 Octo 클라우드에 붙기 때문에 **Cloud OK** 가 됩니다.  
-프로필 **시작·브라우저 제어(CDP)** 는 Local API가 필요합니다.
+웹 UI와 **같은 서버**에 Octo Linux 클라이언트(headless)를 올립니다.
 
 ```
-[브라우저] → VPS 웹 UI → 127.0.0.1:58888  (서버 자기 자신, Octo 없음)  ❌
-[브라우저] → Windows 웹 UI → 127.0.0.1:58888 (같은 PC의 Octo)          ✅
+[브라우저] → VPS 웹 UI
+               ├─ Cloud API (토큰) → 프로필 관리
+               └─ Local API 127.0.0.1:58888 → 같은 서버의 Octo Client → Playwright CDP
 ```
 
-## 해결 (권장): Windows에서 웹 실행
+### 1) 서버에 Octo Client 설치
 
-1. Octo Browser 실행 후 로그인  
-2. 이 프로젝트 폴더에서:
+```bash
+cd /opt/octo-google-site-automation
+sudo bash deploy/setup-octo-client.sh
+sudo systemctl status octo-client
+curl -s http://127.0.0.1:58888/api/username
+```
+
+### 2) 웹 UI에 Octo 계정 입력
+
+설정 탭:
+
+- **API 토큰** (Cloud)
+- **Octo 로그인 이메일 / 비밀번호** (Local Client 자동 로그인)
+- Local API: `http://127.0.0.1:58888/api` (서버 기본값 유지)
+
+저장 → 연결 테스트 → `Cloud OK · Local OK`
+
+### 3) 실행
+
+VPS에서는 **headless ON** 권장.
+
+---
+
+## Windows PC에서만 돌릴 때
+
+Octo 데스크톱 앱 실행 + 로그인 후:
 
 ```bat
 웹시작.bat
 ```
 
-또는:
+`http://127.0.0.1:8787` 에서 연결 테스트.
 
-```powershell
-cd C:\Users\sta11\Desktop\Octo-Google-Site-Automation
-python main.py --web
-```
+---
 
-3. 브라우저에서 **http://127.0.0.1:8787/** 접속  
-4. 토큰 입력 후 **연결 테스트** → Cloud OK · Local OK 확인  
-5. 그다음 작업 시작  
+## 자주 묻는 질문
 
-VPS(`http://66.29.149.197:8787/`)는 설정 확인·백업용으로 두고,  
-**실제 자동화 실행은 반드시 Octo PC**에서 하세요.
+**Q. Cloud API로 start 하면 안 되나요?**  
+A. Octo가 Local Client 전용으로만 start를 제공합니다. Cloud는 관리 API입니다.
 
-## VPS만으로 Local을 살릴 수 있나?
-
-터널로 Local API 포트만 넘기면 “연결 테스트”는 통과할 수 있어도,  
-프로필 시작 후 Playwright가 붙는 CDP(`ws_endpoint` / debug_port)도  
-PC 쪽 `127.0.0.1` 이라 **서버에서 브라우저 제어가 깨집니다.**
-
-→ 원격 서버 + 로컬 Octo 조합으로는 **전체 자동화가 설계상 맞지 않습니다.**  
-→ **웹 UI와 Octo를 같은 Windows PC**에 두는 것이 정답입니다.
+**Q. 내 PC Octo + VPS 웹?**  
+A. 서버의 `127.0.0.1` ≠ PC. Local OFF가 정상입니다.  
+→ 서버에 클라이언트 설치 또는 웹을 PC에서 실행.

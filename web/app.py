@@ -166,6 +166,9 @@ class TestConnBody(BaseModel):
     octo_api_token: str = ""
     cloud_base: str = "https://app.octobrowser.net/api/v2/automation"
     local_base: str = "http://127.0.0.1:58888/api"
+    octo_email: str = ""
+    octo_password: str = ""
+    octo_auto_login: bool = True
 
 
 # ── pages ────────────────────────────────────────────────────
@@ -330,16 +333,32 @@ async def api_test_connection(body: TestConnBody):
         local_msg = ""
         local_ok = False
         try:
-            user = client.local_username()
+            email = (body.octo_email or "").strip()
+            password = body.octo_password or ""
+            # fall back to saved config credentials
+            if not email or not password:
+                saved = load_or_default(BASE_DIR)
+                email = email or str(saved.get("octo_email") or "").strip()
+                password = password or str(saved.get("octo_password") or "")
+            sess = client.ensure_local_session(
+                email=email,
+                password=password,
+                auto_login=bool(body.octo_auto_login),
+            )
             local_ok = True
-            local_msg = f"Local OK (user={user or 'ok'})"
+            local_msg = (
+                f"Local OK (user={sess.get('username') or 'ok'} · "
+                f"{sess.get('action') or 'ready'})"
+            )
         except OctoError as exc:
             local_msg = f"Local OFF: {exc}"
             lb = (body.local_base or "").strip().lower()
-            if ("127.0.0.1" in lb or "localhost" in lb) and not local_ok:
+            if "127.0.0.1" in lb or "localhost" in lb:
                 local_msg += (
-                    " | 원격 서버에서 접속 중이면 Local API는 항상 실패합니다. "
-                    "Octo PC에서 웹을 실행하세요 (웹시작.bat)."
+                    " | Cloud API만으로는 프로필을 켤 수 없습니다. "
+                    "같은 서버에 Octo 클라이언트(headless)를 띄우세요 "
+                    "(deploy/setup-octo-client.sh). "
+                    "그 다음 octo_email/octo_password 로 Local 로그인."
                 )
         status = (
             f"● Online — Cloud OK · {local_msg}"

@@ -367,6 +367,40 @@ class JobRunner:
             local_base=str(config.get("local_base") or "http://127.0.0.1:58888/api"),
         )
 
+        # Cloud API = 프로필/프록시 관리 · Local Client = 프로필 시작+CDP
+        # VPS에서는 같은 서버에 Octo headless 클라이언트를 띄운 뒤 로그인
+        octo_email = str(
+            config.get("octo_email")
+            or config.get("octo_login_email")
+            or ""
+        ).strip()
+        octo_password = str(
+            config.get("octo_password")
+            or config.get("octo_login_password")
+            or ""
+        )
+        auto_login = bool(config.get("octo_auto_login", True))
+        try:
+            sess = self.client.ensure_local_session(
+                email=octo_email,
+                password=octo_password,
+                auto_login=auto_login,
+            )
+            self.log(
+                f"[Octo Local] 준비 완료 · user={sess.get('username') or '?'} · "
+                f"action={sess.get('action')}"
+            )
+        except Exception as exc:
+            self.log(f"[Octo Local] 경고: {exc}")
+            # still allow cloud-only dry checks; start_profile will fail clearly later
+            if not bool(config.get("allow_cloud_only", False)):
+                raise ValueError(
+                    "Local Client(Octo) 연결 실패. "
+                    "서버에 Octo headless 클라이언트를 설치·실행하고 "
+                    "octo_email/octo_password 를 설정하세요. "
+                    f"상세: {exc}"
+                ) from exc
+
         proxy_type = str(config.get("proxy_type") or "http")
         if proxies is not None:
             self.proxies = list(proxies)

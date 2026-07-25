@@ -579,11 +579,80 @@ class OctoClient:
             return {"raw": resp.text}
 
     def local_username(self) -> str:
-        data = self._local("GET", "/username")
+        data = self._local("GET", "/username", timeout=15)
         return str(data.get("username", ""))
 
+    def local_login(self, email: str, password: str) -> None:
+        """Sign in the Octo desktop/headless client via Local API (v1.8+)."""
+        email = (email or "").strip()
+        password = password or ""
+        if not email or not password:
+            raise OctoError("Local 로그인에 Octo 계정 이메일/비밀번호가 필요합니다.")
+        data = self._local(
+            "POST",
+            "/auth/login",
+            json_body={"email": email, "password": password},
+            timeout=60,
+        )
+        if isinstance(data, dict) and data.get("error"):
+            raise OctoError(f"Local 로그인 실패: {data}")
+
+    def local_logout(self) -> None:
+        try:
+            self._local("POST", "/auth/logout", timeout=30)
+        except OctoError:
+            pass
+
+    def ensure_local_session(
+        self,
+        *,
+        email: str = "",
+        password: str = "",
+        auto_login: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Ensure Local Client API is up and signed in.
+
+        Octo design:
+          · Cloud API  — create/edit profiles, proxies, tags (token)
+          · Local API  — start/stop profiles + CDP (desktop or headless client)
+        On a VPS, run the Octo Linux client on the same host so 127.0.0.1:58888 works.
+        """
+        try:
+            user = self.local_username()
+            if user:
+                return {"ok": True, "username": user, "logged_in": True, "action": "already"}
+        except OctoError as exc:
+            # client down vs not logged in — try login if we have credentials
+            if not auto_login or not (email and password):
+                raise OctoError(
+                    f"Local Client 미연결: {exc}. "
+                    "서버에 Octo 클라이언트(headless)가 떠 있어야 합니다. "
+                    "deploy/setup-octo-client.sh 참고."
+                ) from exc
+
+        if auto_login and email and password:
+            try:
+                self.local_login(email, password)
+            except OctoError as exc:
+                # sometimes /username fails when logged out but login still works
+                # if client is completely down, login also fails
+                raise OctoError(f"Local 자동 로그인 실패: {exc}") from exc
+            user = self.local_username()
+            return {
+                "ok": True,
+                "username": user,
+                "logged_in": bool(user),
+                "action": "login",
+            }
+
+        raise OctoError(
+            "Local Client에 로그인되지 않았습니다. "
+            "octo_email / octo_password 를 설정하거나 클라이언트를 실행하세요."
+        )
+
     def local_version(self) -> Dict[str, Any]:
-        for path in ("/version", "/client/version", "/app/version"):
+        for path in ("/update", "/version", "/client/version", "/app/version"):
             try:
                 data = self._local("GET", path, timeout=10)
                 if isinstance(data, dict):
@@ -604,6 +673,10 @@ class OctoClient:
         flags: Optional[List[str]] = None,
         debug_port: Union[bool, int] = True,
     ) -> Dict[str, Any]:
+        """
+        Start profile via Local Client API (required by Octo).
+        Cloud API can create profiles but cannot return CDP endpoints.
+        """
         body: Dict[str, Any] = {
             "uuid": uuid,
             "headless": headless,
@@ -656,11 +729,32 @@ class OctoClient:
         if start_pages:
             body["start_pages"] = start_pages[:20]
 
-        # Prefer local one-time
-        for path in ("/profiles/one_time", "/profiles/one-time", "/profiles/onetime"):
+        # Prefer local one-time (official path: /profiles/one_time/start)
+        one_time_body = {
+            "profile_data": {
+                "title": body.get("title"),
+                "fingerprint": fp,
+                "start_pages": list(start_pages or [])[:20],
+            },
+            "headless": headless,
+            "debug_port": True,
+            "timeout": timeout_sec,
+            "flags": [],
+        }
+        if proxy is not None:
+            one_time_body["profile_data"]["proxy"] = proxy.to_octo_inline()
+        for path in (
+            "/profiles/one_time/start",
+            "/profiles/one_time",
+            "/profiles/one-time",
+            "/profiles/onetime",
+        ):
             try:
                 data = self._local(
-                    "POST", path, json_body=body, timeout=timeout_sec + 40
+                    "POST",
+                    path,
+                    json_body=one_time_body if path.endswith("/start") else body,
+                    timeout=timeout_sec + 40,
                 )
                 if isinstance(data, dict) and (
                     data.get("ws_endpoint") or data.get("debug_port")
