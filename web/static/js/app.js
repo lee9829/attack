@@ -855,10 +855,12 @@
     if ($("#cookieReload")) $("#cookieReload").checked = ck.reload_on_site !== false;
 
     const ops = cfg.ops || {};
-    if ($("#opsEnabled")) $("#opsEnabled").checked = ops.enabled !== false;
-    if ($("#opsMode")) $("#opsMode").value = ops.mode || "swarm";
-    if ($("#opsBrowserPreset")) $("#opsBrowserPreset").value = ops.browser_preset || "blitz";
-    if ($("#opsRunHttp")) $("#opsRunHttp").checked = ops.run_http_ops !== false;
+    // 기본 OFF — 예전에 저장된 swarm 설정이 있어도 체크 강제 해제하지 않되,
+    // enabled 기본은 false (undefined면 끔)
+    if ($("#opsEnabled")) $("#opsEnabled").checked = !!ops.enabled;
+    if ($("#opsMode")) $("#opsMode").value = ops.mode || "browser";
+    if ($("#opsBrowserPreset")) $("#opsBrowserPreset").value = ops.browser_preset || "normal";
+    if ($("#opsRunHttp")) $("#opsRunHttp").checked = !!ops.run_http_ops;
     if ($("#opsSkipHammer")) $("#opsSkipHammer").checked = !!ops.skip_hammer;
     if ($("#opsMultiHammer")) $("#opsMultiHammer").checked = ops.multi_hammer !== false;
     if ($("#opsPathWorkers")) $("#opsPathWorkers").value = ops.path_workers ?? 16;

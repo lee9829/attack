@@ -225,11 +225,22 @@ class OctoClient:
         if "os" not in fp:
             fp["os"] = os_key
 
-        body: Dict[str, Any] = {
-            "title": title[:90],
-            "fingerprint": fp,
-            "storage_options": storage_options
-            or {
+        # Mobile(Android) profiles: Octo rejects storage_options.extensions / extensions[]
+        is_mobile = os_key == "android"
+        if storage_options is not None:
+            so = dict(storage_options)
+        elif is_mobile:
+            so = {
+                "cookies": True,
+                "passwords": True,
+                "extensions": False,  # required false for mobile
+                "localstorage": True,
+                "history": False,
+                "bookmarks": False,
+                "serviceworkers": False,
+            }
+        else:
+            so = {
                 "cookies": True,
                 "passwords": True,
                 "extensions": True,
@@ -237,7 +248,14 @@ class OctoClient:
                 "history": False,
                 "bookmarks": True,
                 "serviceworkers": False,
-            },
+            }
+        if is_mobile:
+            so["extensions"] = False
+
+        body: Dict[str, Any] = {
+            "title": title[:90],
+            "fingerprint": fp,
+            "storage_options": so,
         }
         if description:
             body["description"] = description[:500]
@@ -248,16 +266,25 @@ class OctoClient:
         if tags:
             # API accepts tag uuids or titles depending on plan; pass as list
             body["tags"] = list(tags)[:30]
-        if bookmarks:
+        if bookmarks and not is_mobile:
             body["bookmarks"] = bookmarks[:50]
-        if extensions:
+        # Never attach browser extensions on mobile profiles
+        if extensions and not is_mobile:
             body["extensions"] = extensions[:30]
         if password:
             body["password"] = password
         if folder_uuid:
             body["folder_uuid"] = folder_uuid
         if extra_body:
-            body.update(extra_body)
+            for k, v in extra_body.items():
+                if is_mobile and k in ("extensions",):
+                    continue
+                if is_mobile and k == "storage_options" and isinstance(v, dict):
+                    vv = dict(v)
+                    vv["extensions"] = False
+                    body[k] = vv
+                    continue
+                body[k] = v
 
         data = self._cloud("POST", "/profiles", json_body=body)
         uuid = data.get("uuid") if isinstance(data, dict) else None
@@ -289,6 +316,17 @@ class OctoClient:
             tags=tags or ["mobile", "auto"],
             description=description,
             start_pages=start_pages,
+            # mobile: no extensions (Octo API hard-fail otherwise)
+            storage_options={
+                "cookies": True,
+                "passwords": True,
+                "extensions": False,
+                "localstorage": True,
+                "history": False,
+                "bookmarks": False,
+                "serviceworkers": False,
+            },
+            extensions=None,
         )
 
     def update_profile(self, uuid: str, patch: Dict[str, Any]) -> Any:

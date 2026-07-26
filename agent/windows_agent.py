@@ -230,6 +230,22 @@ class AgentCore:
         sf.setdefault("keyword_rotate", True)
         sf.setdefault("keyword_shuffle", True)
         cfg["search_flow"] = sf
+        # 레이드 클릭 작업에서 OPS swarm/hammer 자동 OFF (디도스성 경로스캔 방지)
+        ops = dict(cfg.get("ops") or {})
+        if ops.get("enabled") and str(ops.get("mode") or "").lower() in (
+            "swarm",
+            "hammer",
+            "blitz",
+            "full",
+        ):
+            # 웹에서 실수로 OPS 켜진 채 START 해도 클릭 매크로 우선
+            if not ops.get("force_ops_with_browser"):
+                ops["enabled"] = False
+                ops["run_http_ops"] = False
+                self.log(
+                    "[사람] OPS 스웜/해머는 끄고, 구글 검색·클릭 레이드만 진행합니다."
+                )
+        cfg["ops"] = ops
 
         accounts: List[AccountJob] = []
         for i, r in enumerate(list(job.get("accounts") or [])):
