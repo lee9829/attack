@@ -13,16 +13,16 @@
   };
 
   const titles = {
-    home: ["통제판", "웹에서 START/STOP · PC Octo가 실행 (오토 매크로)"],
-    ops: ["OPS", "고급 정찰 (일반 매크로 불필요)"],
-    proxies: ["프록시", "host:port:id:pw"],
-    accounts: ["계정", "Google 로그인용"],
-    search: ["검색 상세", "정규식 · 체류"],
+    home: ["작전 통제판", "Octo 프로필 · 다양 검색 · 타겟 1클릭 · 실시간 추적"],
+    ops: ["OPS", "고급 정찰 (일반 작전 불필요)"],
+    proxies: ["프록시", "host:port:id:pw · 출구 IP"],
+    accounts: ["Octo 계정", "Google 로그인 · 프로필 매핑"],
+    search: ["검색 상세", "정규식 · 체류 · SERP"],
     bulk: ["대량 URL", "일괄 URL"],
     cookies: ["쿠키", "세션 주입"],
-    settings: ["설정", "엔진 · API · 동시 실행"],
-    logs: ["로그", "실시간 매크로 로그"],
-    help: ["도움말", "Octo 오토 사용법"],
+    settings: ["엔진 설정", "agent · API · 동시 프로필"],
+    logs: ["실시간 로그", "원본 실행 로그"],
+    help: ["실행 가이드", "보안팀 정확한 실행 순서"],
   };
 
   function setMacroStep(step) {
@@ -478,8 +478,12 @@
         purpose: "own_site_qa",
         keyword: ($("#keyword")?.value || "").trim(),
         keywords_text: keywordsText,
-        keyword_fallback: true,
+        keyword_fallback: $("#kwFallback") ? $("#kwFallback").checked : true,
         stop_on_first_keyword_hit: true,
+        keyword_rotate: $("#kwRotate") ? $("#kwRotate").checked : true,
+        keyword_shuffle: $("#kwShuffle") ? $("#kwShuffle").checked : true,
+        single_click: $("#singleClick") ? $("#singleClick").checked : true,
+        prefer_ads: $("#preferAds") ? $("#preferAds").checked : true,
         target_domain: ($("#targetDomain")?.value || "").trim(),
         domains_text: domainsText,
         bulk_urls_text: ($("#bulkUrlsText")?.value || "").trim(),
@@ -495,11 +499,27 @@
         path_exclude_text: ($("#pathExcludeText")?.value || "").trim(),
         require_regex: $("#requireRegex") ? $("#requireRegex").checked : false,
         require_domain: $("#requireDomain") ? $("#requireDomain").checked : true,
-        skip_ads: $("#skipAds") ? $("#skipAds").checked : true,
+        skip_ads: (() => {
+          const home = $("#skipAds");
+          const det = $("#skipAdsDetail");
+          if (home) return home.checked;
+          if (det) return det.checked;
+          return false;
+        })(),
         search_url: "https://www.google.com/",
-        max_serp_pages: Number($("#maxSerp")?.value || 3),
-        max_result_clicks: Number($("#maxClicks")?.value || 1),
-        revisit_count: Number($("#revisit")?.value || 1),
+        max_serp_pages: Number(
+          $("#maxSerpHome")?.value || $("#maxSerp")?.value || 3
+        ),
+        max_result_clicks: (() => {
+          const n = Number(
+            $("#maxClicksHome")?.value || $("#maxClicks")?.value || 1
+          );
+          const single = $("#singleClick") ? $("#singleClick").checked : true;
+          return single ? Math.min(n || 1, 1) : n || 1;
+        })(),
+        revisit_count: Number(
+          $("#revisitHome")?.value || $("#revisit")?.value || 0
+        ),
         warmup: $("#warmup") ? $("#warmup").checked : true,
         human: {
           dwell_ms_min: Number($("#dwellMin")?.value || 5000),
@@ -619,12 +639,21 @@
       $("#bulkStats").textContent =
         `도메인 ${bst.domains || 0} · URL ${bst.full_urls || 0} · path ${bst.paths_exact || 0} · regex ${bst.path_regexes || 0}`;
     }
-    $("#maxSerp").value = sf.max_serp_pages ?? 3;
-    $("#revisit").value = sf.revisit_count ?? 1;
-    $("#maxClicks").value = sf.max_result_clicks ?? 1;
-    $("#skipAds").checked = sf.skip_ads !== false;
-    $("#requireDomain").checked = sf.require_domain !== false;
-    $("#warmup").checked = sf.warmup !== false;
+    if ($("#maxSerp")) $("#maxSerp").value = sf.max_serp_pages ?? 3;
+    if ($("#maxSerpHome")) $("#maxSerpHome").value = sf.max_serp_pages ?? 3;
+    if ($("#revisit")) $("#revisit").value = sf.revisit_count ?? 0;
+    if ($("#revisitHome")) $("#revisitHome").value = sf.revisit_count ?? 0;
+    if ($("#maxClicks")) $("#maxClicks").value = sf.max_result_clicks ?? 1;
+    if ($("#maxClicksHome")) $("#maxClicksHome").value = sf.max_result_clicks ?? 1;
+    if ($("#skipAds")) $("#skipAds").checked = !!sf.skip_ads;
+    if ($("#skipAdsDetail")) $("#skipAdsDetail").checked = !!sf.skip_ads;
+    if ($("#singleClick")) $("#singleClick").checked = sf.single_click !== false;
+    if ($("#kwRotate")) $("#kwRotate").checked = sf.keyword_rotate !== false;
+    if ($("#kwShuffle")) $("#kwShuffle").checked = sf.keyword_shuffle !== false;
+    if ($("#kwFallback")) $("#kwFallback").checked = sf.keyword_fallback !== false;
+    if ($("#preferAds")) $("#preferAds").checked = sf.prefer_ads !== false;
+    if ($("#requireDomain")) $("#requireDomain").checked = sf.require_domain !== false;
+    if ($("#warmup")) $("#warmup").checked = sf.warmup !== false;
     const human = sf.human || {};
     $("#dwellMin").value = human.dwell_ms_min ?? 4000;
     $("#dwellMax").value = human.dwell_ms_max ?? 12000;
@@ -1194,9 +1223,57 @@
       addDynRow($("#kwList"), "", "검색어");
       syncKwTextarea();
     });
+    $("#btnExpandKw")?.addEventListener("click", () => {
+      // 보안 추적: 시드 키워드 → 추천/순위/사이트 등 변형 확장
+      const seeds = $$("#kwList input")
+        .map((el) => (el.value || "").trim())
+        .filter(Boolean);
+      if (!seeds.length) {
+        toast("먼저 시드 검색어를 1개 이상 넣으세요", "err");
+        return;
+      }
+      const suffixes = [
+        "",
+        " 추천",
+        " 순위",
+        " 사이트",
+        " 비교",
+        " 후기",
+        " 탑",
+        " 리스트",
+        " 공식",
+      ];
+      const seen = new Set();
+      const out = [];
+      for (const s of seeds) {
+        for (const suf of suffixes) {
+          const k = (s + suf).trim();
+          const key = k.toLowerCase();
+          if (!seen.has(key)) {
+            seen.add(key);
+            out.push(k);
+          }
+        }
+      }
+      renderKeywords(out.slice(0, 80));
+      toast(`검색어 ${out.length}개로 확장 (최대 80 표시)`);
+    });
     $("#btnAddSite")?.addEventListener("click", () => {
-      addDynRow($("#siteList"), "", "mysite.com");
+      addDynRow($("#siteList"), "", "target-domain.com");
       syncSitesTextarea();
+    });
+    // sync home ↔ detail skip ads
+    $("#skipAds")?.addEventListener("change", () => {
+      if ($("#skipAdsDetail")) $("#skipAdsDetail").checked = $("#skipAds").checked;
+    });
+    $("#skipAdsDetail")?.addEventListener("change", () => {
+      if ($("#skipAds")) $("#skipAds").checked = $("#skipAdsDetail").checked;
+    });
+    $("#singleClick")?.addEventListener("change", () => {
+      if ($("#singleClick").checked) {
+        if ($("#maxClicksHome")) $("#maxClicksHome").value = 1;
+        if ($("#maxClicks")) $("#maxClicks").value = 1;
+      }
     });
     $$(".log-filter").forEach((b) =>
       b.addEventListener("click", () => {

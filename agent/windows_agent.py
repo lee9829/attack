@@ -353,30 +353,35 @@ def run_gui(core: AgentCore) -> int:
     from tkinter import scrolledtext
 
     root = tk.Tk()
-    root.title("Octo 오토 연동 · 통합 에이전트")
-    root.geometry("560x420")
+    root.title("Octo 소탕 에이전트 · 보안팀")
+    root.geometry("620x520")
     root.configure(bg="#0e1218")
     try:
         root.attributes("-topmost", True)
-        root.after(1500, lambda: root.attributes("-topmost", False))
+        root.after(1800, lambda: root.attributes("-topmost", False))
     except Exception:
         pass
 
     fg = "#e8eef8"
     muted = "#8b95a8"
     accent = "#3dd68c"
+    blue = "#5b9dff"
 
     hdr = tk.Label(
         root,
-        text="Octo 매크로 연동 (끄지 마세요)",
-        font=("Segoe UI", 14, "bold"),
+        text="Octo 소탕 연동 (게임 오토처럼 · 끄지 마세요)",
+        font=("Segoe UI", 13, "bold"),
         bg="#0e1218",
         fg=accent,
     )
-    hdr.pack(pady=(12, 4))
+    hdr.pack(pady=(12, 2))
 
     lbl_server = tk.Label(
-        root, text=f"사이트: {core.server}", bg="#0e1218", fg=muted, font=("Segoe UI", 9)
+        root,
+        text=f"통제 사이트: {core.server}",
+        bg="#0e1218",
+        fg=muted,
+        font=("Segoe UI", 9),
     )
     lbl_server.pack()
 
@@ -391,9 +396,23 @@ def run_gui(core: AgentCore) -> int:
     )
     lbl_octo.pack()
 
+    guide = tk.Label(
+        root,
+        text=(
+            "실행: ① Octo Browser 로그인  ② 이 창 유지  "
+            "③ 웹에서 START  ④ 프로필=검색=1클릭 자동"
+        ),
+        bg="#0e1218",
+        fg=blue,
+        font=("Segoe UI", 9),
+        wraplength=580,
+        justify="center",
+    )
+    guide.pack(pady=(6, 4), padx=10)
+
     log_box = scrolledtext.ScrolledText(
         root,
-        height=14,
+        height=16,
         bg="#080a0e",
         fg="#c9d2e0",
         insertbackground=fg,
@@ -428,17 +447,20 @@ def run_gui(core: AgentCore) -> int:
             root.after(200, pump)
 
     def on_close() -> None:
-        # confirm stay alive feel
-        append_log("[Agent] 창 닫힘 — 백그라운드 종료")
+        append_log("[Agent] 창 닫힘 — 연결 종료 (웹 START 불가)")
         core.stop()
         root.destroy()
 
     root.protocol("WM_DELETE_WINDOW", on_close)
     append_log(f"Server={core.server}")
-    append_log(f"Token={'내장OK' if core.token else '없음'}")
-    append_log("1) Octo Browser 로그인 유지")
-    append_log("2) 사이트에서 ▶ START")
-    append_log("3) 이 창은 그대로 두세요 (연결 유지)")
+    append_log(f"Token={'내장OK' if core.token else '없음 — EXE 재빌드 필요'}")
+    append_log("=== 정확한 실행 순서 ===")
+    append_log("1) Octo Browser 실행 + 로그인 (Local API 켜짐)")
+    append_log("2) 이 에이전트 창 유지 (연결 하트비트)")
+    append_log("3) 웹 통제판 로그인 → 계정/검색어/타겟/프록시")
+    append_log("4) ▶ START → Octo 프로필이 다양 검색 후 1클릭")
+    append_log("5) 웹 위젯에서 프로필·IP·클릭 URL 실시간 확인")
+    append_log("========================")
 
     core.start_background()
     pump()

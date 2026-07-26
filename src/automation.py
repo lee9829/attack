@@ -3816,6 +3816,40 @@ async def run_search_flow(
             "GUI '기본 검색어' 또는 '추가 검색어 목록'에 입력하세요."
         )
 
+    # ── 프로필(작업)별 검색어 다양화 ─────────────────────────────
+    # 오토 게임처럼: 창마다 다른 검색어로 조회 → 타겟 1회 클릭
+    job_index = int(cfg.get("_job_index") or cfg.get("job_index") or 0)
+    if bool(cfg.get("keyword_rotate", True)) and len(keywords) > 1 and job_index > 0:
+        off = (max(0, job_index) - 1) % len(keywords)
+        keywords = keywords[off:] + keywords[:off]
+        if log:
+            log(
+                f"[SEARCH] 검색어 로테이트 job={job_index} offset={off} "
+                f"→ 시작='{keywords[0]}'"
+            )
+    if bool(cfg.get("keyword_shuffle", True)) and len(keywords) > 1:
+        # 분 단위 시드: 같은 분에는 재현 가능, 프로필마다 다른 순서
+        seed = (job_index or 1) * 9973 + int(time.time()) // 120
+        rng = random.Random(seed)
+        head = keywords[0]
+        rest = keywords[1:]
+        rng.shuffle(rest)
+        keywords = [head] + rest
+        if log:
+            log(
+                f"[SEARCH] 검색어 셔플 job={job_index} seed={seed} "
+                f"order={keywords[:8]}{'…' if len(keywords)>8 else ''}"
+            )
+    # one_keyword_per_job: 주 검색어 1개만 쓰고 폴백 허용 시 나머지 유지
+    if bool(cfg.get("one_keyword_per_job")) and keywords:
+        primary = keywords[0]
+        if bool(cfg.get("keyword_fallback", True)) and len(keywords) > 1:
+            keywords = [primary] + keywords[1:]
+        else:
+            keywords = [primary]
+        if log:
+            log(f"[SEARCH] 1검색어/프로필 모드 primary='{primary}' fallback={len(keywords)-1}")
+
     target_domain = str(
         cfg.get("target_domain") or cfg.get("own_domain") or cfg.get("site_domain") or ""
     ).strip()
@@ -3941,8 +3975,11 @@ async def run_search_flow(
         cfg.get("max_result_clicks")
         or cfg.get("clicks_per_keyword")
         or cfg.get("max_clicks_per_search")
-        or 5
+        or 1  # 기본 1클릭 (프로필당 타겟 한 번)
     )
+    # hard cap for "single click" mission mode
+    if bool(cfg.get("single_click", True)):
+        max_clicks = min(max_clicks, 1)
     max_keywords = int(cfg.get("max_keywords_per_job") or 0)  # 0 = all
     if max_keywords > 0:
         keywords = keywords[:max_keywords]
@@ -4406,15 +4443,22 @@ async def run_browser_job(
                 f"revisit={sf.get('revisit_count', 0)}"
             )
             page = await session.live_page(log)
-            # pass cookies + OPS preset + traffic into search flow
+            # pass cookies + OPS preset + traffic + job index into search flow
             sf_run = dict(sf)
             sf_run["_cookies_cfg"] = ck_cfg
+            sf_run["_job_index"] = int(meta.get("job_index") or 0)
             if meta.get("ops_preset"):
                 sf_run["_ops_preset"] = meta.get("ops_preset")
             elif ck_cfg.get("_ops_preset"):
                 sf_run["_ops_preset"] = ck_cfg.get("_ops_preset")
             if traffic is not None:
                 sf_run["_traffic"] = traffic
+            # security / single-click mission defaults (override only if unset)
+            sf_run.setdefault("single_click", True)
+            sf_run.setdefault("keyword_rotate", True)
+            sf_run.setdefault("keyword_shuffle", True)
+            sf_run.setdefault("stop_on_first_keyword_hit", True)
+            sf_run.setdefault("max_result_clicks", 1)
             search_result = await run_search_flow(
                 page, sf_run, log=log, browser=session.browser
             )
