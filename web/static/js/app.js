@@ -13,8 +13,8 @@
   };
 
   const titles = {
-    home: ["작전 통제판", "Octo 프로필 · 다양 검색 · 타겟 1클릭 · 실시간 추적"],
-    ops: ["OPS", "고급 정찰 (일반 작전 불필요)"],
+    home: ["레이드 전투판", "와우식 · 프로필·IP · HIT 판정 · 모바일 Octo"],
+    ops: ["OPS", "고급 정찰 (일반 레이드 불필요)"],
     proxies: ["프록시", "host:port:id:pw · 출구 IP"],
     accounts: ["Octo 계정", "Google 로그인 · 프로필 매핑"],
     search: ["검색 상세", "정규식 · 체류 · SERP"],
@@ -26,21 +26,46 @@
   };
 
   function setMacroStep(step) {
-    $$(".macro-step").forEach((el) => {
+    $$(".macro-step, .skill").forEach((el) => {
       el.classList.toggle("active", el.dataset.mstep === step);
     });
   }
 
   const evidenceState = { rows: [] };
+  const combatBuf = [];
 
-  function renderEvidenceBoard(rows) {
-    const body = $("#evidenceBody");
-    if (!body) return;
-    const list = Array.isArray(rows) ? rows : [];
-    if (list.length) {
-      // merge by job+profile+ts-ish, keep latest full board
-      evidenceState.rows = list.slice(-200);
+  function pushCombatLine(text, kind) {
+    combatBuf.push({
+      text: String(text || ""),
+      kind: kind || "info",
+      ts: Date.now(),
+    });
+    if (combatBuf.length > 120) combatBuf.splice(0, combatBuf.length - 120);
+    paintCombatLog();
+  }
+
+  function paintCombatLog() {
+    const box = $("#combatLog");
+    if (!box) return;
+    if (!combatBuf.length) {
+      box.innerHTML =
+        `<div class="cl-empty">전투 대기… 레이드 시작하면 HIT/MISS 가 여기에 뜹니다</div>`;
+      return;
     }
+    box.innerHTML = combatBuf
+      .slice()
+      .reverse()
+      .slice(0, 80)
+      .map((x) => {
+        const t = new Date(x.ts).toLocaleTimeString("ko-KR", { hour12: false });
+        return `<div class="cl-line kind-${x.kind}"><span class="cl-t">${t}</span><span class="cl-m">${esc(
+          x.text
+        )}</span></div>`;
+      })
+      .join("");
+  }
+
+  function updateScores() {
     const data = evidenceState.rows;
     let ok = 0;
     let fail = 0;
@@ -51,9 +76,22 @@
     if ($("#evdClickOk")) $("#evdClickOk").textContent = String(ok);
     if ($("#evdClickFail")) $("#evdClickFail").textContent = String(fail);
     if ($("#evdTotal")) $("#evdTotal").textContent = String(data.length);
+    if ($("#scoreHit")) $("#scoreHit").textContent = String(ok);
+    if ($("#scoreMiss")) $("#scoreMiss").textContent = String(fail);
+  }
+
+  function renderEvidenceBoard(rows) {
+    const body = $("#evidenceBody");
+    if (!body) return;
+    const list = Array.isArray(rows) ? rows : [];
+    if (list.length) {
+      evidenceState.rows = list.slice(-200);
+    }
+    const data = evidenceState.rows;
+    updateScores();
     if (!data.length) {
       body.innerHTML =
-        `<tr><td colspan="10" class="muted">아직 증거 없음 · START 후 자동 채움</td></tr>`;
+        `<tr><td colspan="10" class="muted">아직 전적 없음 · 레이드 시작 후 자동 기록</td></tr>`;
       return;
     }
     body.innerHTML = data
@@ -68,7 +106,7 @@
           : "—";
         return `<tr class="${clicked ? "evd-ok" : "evd-fail"}">
           <td>${esc(r.job ?? "—")}</td>
-          <td><b class="${clicked ? "ok" : "bad"}">${clicked ? "YES" : "NO"}</b></td>
+          <td><b class="${clicked ? "ok" : "bad"}">${clicked ? "HIT" : "MISS"}</b></td>
           <td>${esc(r.profile || "—")}</td>
           <td class="wc-ip">${esc(r.ip || "—")}</td>
           <td>${esc((r.email || "—").toString().slice(0, 28))}</td>
@@ -88,40 +126,45 @@
     const board = $("#workerBoard");
     if (!board) return;
     const list = Array.isArray(jobs) ? jobs : [];
+    if ($("#scoreParty")) $("#scoreParty").textContent = String(list.length || 0);
     if (!list.length) {
       board.innerHTML = running
-        ? `<div class="worker-empty">동시 워커 기동 중… PC 에이전트 로그 확인</div>`
-        : `<div class="worker-empty">대기 · START 하면 프로필·IP·클릭이 위젯 카드로 표시됩니다</div>`;
+        ? `<div class="worker-empty">파티 소집 중… Octo 프로필이 곧 프레임에 나타납니다</div>`
+        : `<div class="worker-empty">파티 대기 · ⚔ 레이드 시작 시 프로필 프레임이 생깁니다</div>`;
       return;
     }
     board.innerHTML = list
       .map((a) => {
         const g = String(a.google || "—");
-        const gClass = /OK|성공/i.test(g)
-          ? "ok"
-          : /실패|fail/i.test(g)
-            ? "bad"
-            : /시도|진행|로그인/i.test(g)
-              ? "run"
-              : "";
-        const phase = String(a.action || a.phase || "run");
-        const live = /click|검색|login|proxy|browser|run|진행/i.test(phase);
-        return `<div class="worker-card ${live ? "wc-live" : ""}">
-          <div class="wc-head">
-            <span class="wc-job"><i class="wc-dot"></i>#${a.job ?? "?"} 워커</span>
-            <span class="wc-phase">${esc(phase)}</span>
+        const gOk = /OK|성공/i.test(g);
+        const gBad = /실패|fail/i.test(g);
+        const phase = String(a.action || a.phase || "대기");
+        const hit =
+          a.click_verified === true ||
+          /클릭 완료|실제클릭|HIT|확정/i.test(phase + (a.matched_url || ""));
+        const miss = a.click_verified === false;
+        const casting = !hit && !miss && running;
+        const frameClass = hit ? "frame-hit" : miss ? "frame-miss" : casting ? "frame-cast" : "";
+        const badge = hit ? "HIT" : miss ? "MISS" : casting ? "CAST" : "IDLE";
+        const os = a.mobile || a.profile_os || "mobile";
+        return `<div class="raid-frame ${frameClass}">
+          <div class="rf-top">
+            <span class="rf-name">#${a.job ?? "?"} ${esc((a.profile || "프로필").toString().slice(0, 18))}</span>
+            <span class="rf-badge ${badge.toLowerCase()}">${badge}</span>
           </div>
-          <div class="wc-row"><span>프로필</span><b>${esc(a.profile || "—")}</b></div>
-          <div class="wc-row"><span>계정</span><b>${esc(a.email || "—")}</b></div>
-          <div class="wc-row"><span>출구 IP</span><b class="wc-ip">${esc(a.ip || "확인중")}</b></div>
-          <div class="wc-row"><span>프록시</span><b class="wc-proxy">${esc((a.proxy || "—").toString().slice(0, 42))}</b></div>
-          <div class="wc-row"><span>구글</span><b class="wc-g ${gClass}">${esc(g)}</b></div>
-          <div class="wc-row"><span>검색어</span><b>${esc(a.keyword || "—")}</b></div>
-          <div class="wc-row"><span>클릭</span><b class="wc-url">${esc((a.matched_url || "—").toString().slice(0, 64))}</b></div>
-          <div class="wc-row"><span>실클릭</span><b class="${a.click_verified ? "ok" : ""}">${
-            a.click_verified === true ? "YES확정" : a.click_verified === false ? "NO" : "—"
-          }</b></div>
-          <div class="wc-row"><span>2FA</span><b>${a.has_2fa ? "Y" : "N"}</b></div>
+          <div class="rf-bar"><i style="width:${hit ? 100 : casting ? 55 : miss ? 15 : 8}%"></i></div>
+          <div class="rf-grid">
+            <div><span>출구 IP</span><b class="wc-ip">${esc(a.ip || "확인중")}</b></div>
+            <div><span>모바일</span><b>${esc(String(os))}</b></div>
+            <div><span>구글</span><b class="${gOk ? "ok" : gBad ? "bad" : ""}">${esc(g)}</b></div>
+            <div><span>2FA</span><b>${a.has_2fa ? "ON" : "—"}</b></div>
+            <div class="rf-full"><span>검색어</span><b>${esc(a.keyword || "—")}</b></div>
+            <div class="rf-full"><span>프록시</span><b>${esc((a.proxy || "—").toString().slice(0, 36))}</b></div>
+            <div class="rf-full"><span>스킬</span><b>${esc(phase)}</b></div>
+            <div class="rf-full"><span>도착</span><b class="wc-url">${esc(
+              (a.matched_url || "—").toString().slice(0, 48)
+            )}</b></div>
+          </div>
         </div>`;
       })
       .join("");
@@ -350,6 +393,17 @@
     if (battleBuf.length > 800) battleBuf.splice(0, battleBuf.length - 800);
     updateBattleStats(msg);
     paintBattleLog();
+    // feed wow combat log with natural lines
+    const m = String(msg || "");
+    if (/HIT|실제로 들어|클릭 성공|도착한 화면|누른 주소|MISS|클릭이 확인되지|둘러보|검색 결과|구글 로그인/i.test(m)) {
+      let ck = "info";
+      if (/HIT|실제로 들어|클릭 성공/i.test(m)) ck = "hit";
+      else if (/MISS|클릭이 확인되지|미확인|실패/i.test(m)) ck = "miss";
+      else if (/검색|둘러보|스크롤|로그인|CAST|시전/i.test(m)) ck = "cast";
+      // strip time prefixes for cleaner combat text
+      const clean = m.replace(/^\[[\d:]+\]\s*/, "").replace(/^\[[^\]]+\]\s*/g, "").trim();
+      if (clean.length > 8) pushCombatLine(clean.slice(0, 160), ck);
+    }
   }
 
   function paintBattleLog() {
@@ -1251,9 +1305,20 @@
     const act = p.active_jobs || [];
     renderWorkerBoard(act, s.running);
     if (Array.isArray(p.evidence_board)) {
+      const prevLen = evidenceState.rows.length;
       renderEvidenceBoard(p.evidence_board);
+      // combat log: announce new hits
+      if (p.evidence_board.length > prevLen) {
+        const last = p.evidence_board[p.evidence_board.length - 1] || {};
+        const hit = !!(last.clicked || last.click_verified);
+        pushCombatLine(
+          hit
+            ? `★ HIT 지정! 프로필「${last.profile || "?"}」· IP ${last.ip || "?"} · 검색「${last.keyword || "?"}」· 도착 ${(last.final_url || last.matched_url || "").toString().slice(0, 50)}`
+            : `✗ MISS 프로필「${last.profile || "?"}」· IP ${last.ip || "?"} · 검색「${last.keyword || "?"}」`,
+          hit ? "hit" : "miss"
+        );
+      }
     } else if (p.phase === "evidence" || p.click_verified != null) {
-      // single row push — append if board missing
       if (p.profile || p.matched_url) {
         const one = {
           job: p.job,
@@ -1275,7 +1340,38 @@
         if (!exists) {
           evidenceState.rows.push(one);
           renderEvidenceBoard(evidenceState.rows);
+          const hit = !!one.click_verified;
+          pushCombatLine(
+            hit
+              ? `★ HIT 지정! 프로필「${one.profile}」· IP ${one.ip || "?"} · 모바일 Octo · 진짜 클릭 확인`
+              : `✗ MISS 프로필「${one.profile}」· IP ${one.ip || "?"} · 클릭 미확인`,
+            hit ? "hit" : "miss"
+          );
         }
+      }
+    }
+    // cast skill chat (debounce per profile+phase)
+    if (s.running && (p.phase || p.action) && p.profile) {
+      const skillMap = {
+        login: "구글 로그인 시전",
+        browser: "브라우저 시전",
+        search: "키워드 검색 시전",
+        click: "타겟 HIT 시전",
+        dwell: "체류·스크롤",
+        agent: "Octo 프로필 소환",
+        prepare: "프로필·프록시 준비",
+        octo_start: "Octo 창 오픈",
+        done: "판정 대기",
+      };
+      const sk = skillMap[p.phase] || p.action || p.phase;
+      const key = `${p.job || ""}|${p.profile}|${p.phase || p.action}`;
+      if (!state._lastCast) state._lastCast = {};
+      if (sk && state._lastCast[key] !== sk) {
+        state._lastCast[key] = sk;
+        pushCombatLine(
+          `[CAST] ${p.profile} · IP ${p.ip || "?"} · 모바일 Octo · ${sk}`,
+          "cast"
+        );
       }
     }
     const box = $("#activeJobs");
@@ -1421,6 +1517,11 @@
     $("#btnClearEvidence")?.addEventListener("click", () => {
       evidenceState.rows = [];
       renderEvidenceBoard([]);
+      updateScores();
+    });
+    $("#btnClearCombat")?.addEventListener("click", () => {
+      combatBuf.length = 0;
+      paintCombatLog();
     });
 
     // game raid presets

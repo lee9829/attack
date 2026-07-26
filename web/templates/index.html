@@ -163,102 +163,129 @@
           </div>
         </div>
 
-        <div class="control-deck">
-          <div class="control-left">
-            <div class="led-row">
-              <div class="led-item">
-                <span class="led" id="ledAgent"></span>
-                <div>
-                  <div class="led-label">PC 에이전트</div>
-                  <div class="led-val" id="agentStatusHome">확인 중…</div>
-                </div>
-              </div>
-              <div class="led-item">
-                <span class="led" id="ledCloud"></span>
-                <div>
-                  <div class="led-label">Octo Cloud</div>
-                  <div class="led-val" id="cloudLedText">미확인</div>
-                </div>
-              </div>
-              <div class="led-item">
-                <span class="led" id="ledMacro"></span>
-                <div>
-                  <div class="led-label">작전 상태</div>
-                  <div class="led-val" id="macroLedText">대기</div>
-                </div>
+        <!-- ===== WOW-STYLE RAID CONTROL ===== -->
+        <div class="wow-arena">
+          <div class="wow-topbar">
+            <div class="wow-title">
+              <span class="wow-icon">⚔</span>
+              <div>
+                <h2>OCTO 레이드 전투판</h2>
+                <p>프로필마다 IP · 모바일 핑거 · 구글로그인 · 검색 · <b>HIT(진짜 클릭)</b> 판정</p>
               </div>
             </div>
-            <div class="macro-path">
-              <div class="macro-step" data-mstep="login">① 구글 로그인</div>
-              <div class="macro-arrow">→</div>
-              <div class="macro-step" data-mstep="search">② 다양 검색</div>
-              <div class="macro-arrow">→</div>
-              <div class="macro-step" data-mstep="click">③ 타겟 1클릭</div>
-              <div class="macro-arrow">→</div>
-              <div class="macro-step" data-mstep="dwell">④ 체류·확인</div>
-              <div class="macro-arrow">→</div>
-              <div class="macro-step" data-mstep="loop">⑤ 다음 프로필</div>
+            <div class="wow-score">
+              <div class="score-box hit"><span>HIT</span><b id="scoreHit">0</b></div>
+              <div class="score-box miss"><span>MISS</span><b id="scoreMiss">0</b></div>
+              <div class="score-box party"><span>파티</span><b id="scoreParty">0</b></div>
             </div>
-            <p class="hint control-hint">
-              <strong>필수:</strong> Octo Browser ON + <code>OctoAgent.exe</code> 연결됨(초록) 확인 후 START
-            </p>
           </div>
-          <div class="control-right">
-            <button type="button" class="btn primary btn-start-xl" id="btnStartHome">⚔ START 레이드</button>
-            <button type="button" class="btn danger btn-stop-xl" id="btnStopHome" disabled>■ STOP</button>
-            <div class="live-mini">
-              <div><span class="muted">현재</span><div id="liveStep">—</div></div>
-              <div><span class="muted">회차/동시</span><div id="liveParallel">—</div></div>
-              <div><span class="muted">2FA</span><div id="live2fa">—</div></div>
-            </div>
-            <div id="liveHint" class="hint">준비됨 · 아래 입력 후 START</div>
-          </div>
-        </div>
 
-        <div class="attack-hud">
-          <div class="attack-hud-head">
-            <h2>실시간 작전 추적 (위젯)</h2>
-            <span class="hint" id="attackHudMeta">대기 · 에이전트 연결 확인 중</span>
+          <div class="wow-skillbar">
+            <div class="skill skill-login" data-mstep="login"><i>①</i><b>구글 로그인</b><small>계정·2FA</small></div>
+            <div class="skill-arrow">›</div>
+            <div class="skill skill-search" data-mstep="search"><i>②</i><b>키워드 검색</b><small>다양 조회</small></div>
+            <div class="skill-arrow">›</div>
+            <div class="skill skill-click" data-mstep="click"><i>③</i><b>타겟 HIT</b><small>1클릭 확정</small></div>
+            <div class="skill-arrow">›</div>
+            <div class="skill skill-dwell" data-mstep="dwell"><i>④</i><b>체류·스크롤</b><small>배너·둘러보기</small></div>
+            <div class="skill-arrow">›</div>
+            <div class="skill skill-loop" data-mstep="loop"><i>⑤</i><b>다음 프로필</b><small>파티 순환</small></div>
           </div>
-          <p class="hint" style="margin:0 0 0.5rem">
-            각 Octo 프로필 카드 = 1워커 · 검색어 / 출구IP / 구글 / 클릭 URL 실시간
-          </p>
-          <div id="workerBoard" class="worker-board"></div>
-          <div id="activeJobs" class="active-jobs muted">실행 중 작업 없음</div>
+
+          <div class="wow-cmd">
+            <div class="wow-cmd-left">
+              <div class="led-row compact">
+                <div class="led-item">
+                  <span class="led" id="ledAgent"></span>
+                  <div><div class="led-label">에이전트</div><div class="led-val" id="agentStatusHome">확인 중…</div></div>
+                </div>
+                <div class="led-item">
+                  <span class="led" id="ledCloud"></span>
+                  <div><div class="led-label">Octo Cloud</div><div class="led-val" id="cloudLedText">미확인</div></div>
+                </div>
+                <div class="led-item">
+                  <span class="led" id="ledMacro"></span>
+                  <div><div class="led-label">레이드</div><div class="led-val" id="macroLedText">대기</div></div>
+                </div>
+              </div>
+              <div class="wow-live-line">
+                <span>현재 스킬: <b id="liveStep">—</b></span>
+                <span>동시/회차: <b id="liveParallel">—</b></span>
+                <span>2FA: <b id="live2fa">—</b></span>
+                <span id="liveHint" class="hint">준비 · 파티 모집 후 START</span>
+              </div>
+            </div>
+            <div class="wow-cmd-right">
+              <button type="button" class="btn primary btn-start-xl wow-start" id="btnStartHome">⚔ 레이드 시작</button>
+              <button type="button" class="btn danger btn-stop-xl" id="btnStopHome" disabled>■ 중지</button>
+            </div>
+          </div>
+
+          <!-- Raid frames = party members (profiles) -->
+          <div class="wow-section-head">
+            <h3>레이드 프레임 <small>(Octo 프로필 = 파티원 · 모바일+프록시IP)</small></h3>
+            <span class="hint" id="attackHudMeta">대기 · 에이전트 연결 확인</span>
+          </div>
+          <div id="workerBoard" class="raid-frames"></div>
+          <div id="activeJobs" class="active-jobs muted">파티원 없음 · START 하면 프레임이 채워집니다</div>
+
+          <div class="wow-bottom-grid">
+            <div class="combat-log-panel">
+              <div class="cl-head">
+                <h3>전투 로그 (HIT 지정)</h3>
+                <button type="button" class="btn sm ghost" id="btnClearCombat">로그 지우기</button>
+              </div>
+              <p class="hint">와우 전투로그처럼 · 누가(프로필) · 어떤 IP로 · HIT/MISS · 검색어</p>
+              <div id="combatLog" class="combat-log" aria-live="polite"></div>
+            </div>
+            <div class="game-board-panel">
+              <h3>게임판 세팅</h3>
+              <div class="gb-row"><span class="gb-k">엔진</span><span class="gb-v">Octo Browser (모바일 프로필)</span></div>
+              <div class="gb-row"><span class="gb-k">접속</span><span class="gb-v">프록시 출구 IP · 프로필마다 다름</span></div>
+              <div class="gb-row"><span class="gb-k">스킬1</span><span class="gb-v">구글 로그인 (+2FA 자동)</span></div>
+              <div class="gb-row"><span class="gb-k">스킬2</span><span class="gb-v">키워드 검색 (다양 조회)</span></div>
+              <div class="gb-row"><span class="gb-k">스킬3</span><span class="gb-v">타겟 1클릭 → <b class="hit-text">HIT</b></span></div>
+              <div class="gb-row"><span class="gb-k">스킬4</span><span class="gb-v">체류 · 스크롤 · 배너</span></div>
+              <div class="gb-legend">
+                <span class="lg hit">HIT = 진짜 클릭·도착</span>
+                <span class="lg miss">MISS = 미클릭/실패</span>
+                <span class="lg run">CAST = 진행 중</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="card evidence-card">
           <div class="row gap wrap" style="justify-content:space-between;align-items:center">
-            <h2 style="margin:0">클릭 증거 보드 (프로필 · IP · 실제클릭)</h2>
+            <h2 style="margin:0">HIT 전적표 (프로필 · IP · 실제클릭)</h2>
             <div class="row gap wrap">
-              <span class="stat-chip">클릭확정 <b id="evdClickOk">0</b></span>
-              <span class="stat-chip">실패/미확정 <b id="evdClickFail">0</b></span>
-              <span class="stat-chip">총 프로필 <b id="evdTotal">0</b></span>
-              <button type="button" class="btn sm ghost" id="btnClearEvidence">보드 지우기</button>
+              <span class="stat-chip hit-chip">HIT <b id="evdClickOk">0</b></span>
+              <span class="stat-chip miss-chip">MISS <b id="evdClickFail">0</b></span>
+              <span class="stat-chip">총 판정 <b id="evdTotal">0</b></span>
+              <button type="button" class="btn sm ghost" id="btnClearEvidence">전적 지우기</button>
             </div>
           </div>
           <p class="hint">
-            실제로 검색 결과 클릭 후 <strong>대상 사이트에 도착했는지</strong> 검증한 기록입니다.
-            프로필 / 출구IP / 검색어 / 광고여부 / 최종URL 이 한 줄로 남습니다.
+            Octo 프로필 + 프록시 IP 조합으로 <strong>진짜 들어갔는지</strong> 판정합니다. YES = HIT.
           </p>
           <div class="table-wrap">
-            <table id="evidenceTable" class="evidence-table">
+            <table id="evidenceTable" class="evidence-table wow-table">
               <thead>
                 <tr>
                   <th>#</th>
-                  <th>클릭</th>
-                  <th>프로필</th>
-                  <th>출구IP</th>
+                  <th>판정</th>
+                  <th>프로필 (파티원)</th>
+                  <th>출구 IP</th>
                   <th>계정</th>
                   <th>검색어</th>
                   <th>광고</th>
                   <th>방법</th>
-                  <th>최종 URL</th>
+                  <th>도착 URL</th>
                   <th>시각</th>
                 </tr>
               </thead>
               <tbody id="evidenceBody">
-                <tr><td colspan="10" class="muted">아직 증거 없음 · START 후 자동 채움</td></tr>
+                <tr><td colspan="10" class="muted">아직 전적 없음 · 레이드 시작 후 자동 기록</td></tr>
               </tbody>
             </table>
           </div>
