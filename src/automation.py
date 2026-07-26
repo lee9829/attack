@@ -1006,6 +1006,90 @@ async def _page_text_snippet(page: Page, limit: int = 400) -> str:
         return ""
 
 
+async def detect_google_login_problem(page: Page) -> str:
+    """
+    구글 로그인 실패 원인을 한국어로 설명 (비개발자용).
+    빈 문자열이면 특별한 차단 문구 없음.
+    """
+    try:
+        url = (page.url or "").lower()
+        snippet = await _page_text_snippet(page, 900)
+        s = (snippet or "").lower()
+        raw = snippet or ""
+    except Exception:
+        return ""
+
+    rules = [
+        (
+            lambda: "captcha" in s
+            or "recaptcha" in s
+            or "로봇이 아닙니다" in raw
+            or "i'm not a robot" in s,
+            "로봇 확인(캡차) 화면입니다. Octo 창에서 체크를 직접 눌러야 할 수 있습니다.",
+        ),
+        (
+            lambda: "wrong password" in s
+            or "incorrect password" in s
+            or "비밀번호가 잘못" in raw
+            or "잘못된 비밀번호" in raw
+            or "비밀번호를 잘못" in raw,
+            "비밀번호가 틀렸습니다. 계정 표의 비밀번호를 확인하세요.",
+        ),
+        (
+            lambda: "couldn't find your google account" in s
+            or "couldn’t find your google account" in s
+            or "계정을 찾을 수 없" in raw
+            or "등록되지 않은 이메일" in raw
+            or "couldn't find your account" in s,
+            "구글 계정을 찾을 수 없습니다. 이메일이 맞는지 확인하세요.",
+        ),
+        (
+            lambda: "too many failed attempts" in s
+            or "여러 번 시도" in raw
+            or "나중에 다시 시도" in raw
+            or "try again later" in s,
+            "실패 횟수가 많아 구글이 잠시 막고 있습니다. 잠시 후 다시 시도하세요.",
+        ),
+        (
+            lambda: "unusual activity" in s
+            or "suspicious" in s
+            or "비정상" in raw
+            or "의심스러운" in raw
+            or "confirm it's you" in s
+            or "본인 확인" in raw
+            or "verify it's you" in s,
+            "구글 보안 추가 확인(본인 확인)이 필요합니다. 전화·기기 확인이 뜰 수 있습니다.",
+        ),
+        (
+            lambda: "this browser or app may not be secure" in s
+            or "안전하지 않을 수 있습니다" in raw
+            or "브라우저가 안전하지" in raw,
+            "이 브라우저는 안전하지 않다는 구글 경고입니다. Octo 프로필/핑거프린트를 바꿔 보세요.",
+        ),
+        (
+            lambda: "phone" in s and ("verify" in s or "number" in s)
+            or "전화번호" in raw
+            or "문자 메시지" in raw,
+            "전화/문자 인증 단계입니다. 시크릿(TOTP)만으로는 통과 못 할 수 있습니다.",
+        ),
+        (
+            lambda: "account disabled" in s or "사용 중지" in raw or "사용 정지" in raw,
+            "계정이 사용 중지된 상태입니다.",
+        ),
+        (
+            lambda: "challenge" in url and "totp" not in url and "pwd" not in url,
+            "추가 보안 확인 화면입니다. 2FA 앱 코드 또는 다른 확인이 필요할 수 있습니다.",
+        ),
+    ]
+    for pred, msg in rules:
+        try:
+            if pred():
+                return msg
+        except Exception:
+            continue
+    return ""
+
+
 async def is_google_logged_in(page: Page, *, probe: bool = False) -> bool:
     if await url_suggests_google_logged_in(page.url):
         u = (page.url or "").lower()
@@ -1147,29 +1231,35 @@ async def _fill_email(page: Page, email: str, pause_ms: int, log) -> bool:
     email_input = page.locator(
         'input[type="email"], input[name="identifier"], #identifierId'
     )
-    el = await _first_visible(email_input, timeout_ms=8000)
+    el = await _first_visible(email_input, timeout_ms=5000)
     if el is None:
+        log("[사람] 이메일 입력칸을 화면에서 찾지 못했습니다.")
         return False
-    log(f"[Google] 이메일(아이디) 입력: {email}")
-    # 로그인 입력은 fill 우선 (느린 한 글자 타이핑 제거)
-    await _type_human(page, el, email, delay=25, fast=True)
-    await _human_delay_async(max(120, min(int(pause_ms), 400)))
-    clicked = await _click_if_visible(page, "#identifierNext", timeout_ms=1200)
+    log(f"[사람] 이메일을 자동으로 넣습니다: {email}")
+    # 고속 fill (한 글자씩 치지 않음)
+    await _type_human(page, el, email, delay=12, fast=True)
+    await _human_delay_async(max(60, min(int(pause_ms), 200)))
+    clicked = await _click_if_visible(page, "#identifierNext", timeout_ms=800)
     if not clicked:
         clicked_text = await _click_button_by_texts(
-            page, ["다음", "Next", "계속", "Continue"], timeout_ms=1000
+            page, ["다음", "Next", "계속", "Continue"], timeout_ms=700
         )
         clicked = bool(clicked_text)
     if not clicked:
         await page.keyboard.press("Enter")
-    # 비밀번호 화면 전환 대기 (짧고 폴링)
-    for _ in range(8):
-        await _human_delay_async(250)
+    # 비밀번호 화면 전환 — 빠르게 폴링
+    for _ in range(12):
+        await _human_delay_async(150)
         try:
+            problem = await detect_google_login_problem(page)
+            if problem and ("계정" in problem or "이메일" in problem):
+                log(f"[사람] 구글이 막았습니다: {problem}")
+                return False
             pw = page.locator(
                 'input[type="password"], input[name="Passwd"], input[name="password"]'
             )
             if await pw.count() > 0 and await pw.first.is_visible():
+                log("[사람] 비밀번호 화면으로 넘어갔습니다.")
                 break
             u = (page.url or "").lower()
             if "challenge/pwd" in u or "password" in u:
@@ -1183,29 +1273,35 @@ async def _fill_password(page: Page, password: str, pause_ms: int, log) -> bool:
     pw_input = page.locator(
         'input[type="password"], input[name="Passwd"], input[name="password"]'
     )
-    el = await _first_visible(pw_input, timeout_ms=12000)
+    el = await _first_visible(pw_input, timeout_ms=7000)
     if el is None:
+        log("[사람] 비밀번호 입력칸을 찾지 못했습니다.")
         return False
-    log("[Google] 비밀번호 입력")
-    await _type_human(page, el, password, delay=25, fast=True)
-    await _human_delay_async(max(120, min(int(pause_ms), 400)))
-    clicked = await _click_if_visible(page, "#passwordNext", timeout_ms=1200)
+    log("[사람] 비밀번호를 자동으로 넣습니다.")
+    await _type_human(page, el, password, delay=12, fast=True)
+    await _human_delay_async(max(60, min(int(pause_ms), 200)))
+    clicked = await _click_if_visible(page, "#passwordNext", timeout_ms=800)
     if not clicked:
         clicked_text = await _click_button_by_texts(
             page,
             ["다음", "Next", "로그인", "Sign in", "계속", "Continue"],
-            timeout_ms=1000,
+            timeout_ms=700,
         )
         clicked = bool(clicked_text)
     if not clicked:
         await page.keyboard.press("Enter")
-    # 2FA/성공 화면 전환 대기
-    for _ in range(10):
-        await _human_delay_async(280)
+    # 2FA/성공/오류 화면 전환
+    for _ in range(14):
+        await _human_delay_async(160)
         try:
+            problem = await detect_google_login_problem(page)
+            if problem and ("비밀번호" in problem or "로봇" in problem or "보안" in problem):
+                log(f"[사람] 구글이 막았습니다: {problem}")
+                return False
             if await is_google_logged_in(page, probe=False):
                 break
             if await _find_2fa_code_input(page) is not None:
+                log("[사람] 2단계 인증(코드) 화면이 나왔습니다.")
                 break
             u = (page.url or "").lower()
             if any(x in u for x in ("challenge", "totp", "signin/v2/challenge", "myaccount")):
@@ -2137,6 +2233,13 @@ async def wait_login_success(
     return False
 
 
+def _report_google_fail(log, reason: str) -> None:
+    """UI 팝업용 마커 + 자연어 로그."""
+    reason = (reason or "알 수 없는 이유로 구글 로그인에 실패했습니다.").strip()
+    log(f"[사람] 구글 로그인 실패 이유: {reason}")
+    log(f"[GOOGLE_FAIL] {reason}")
+
+
 async def google_login(
     page: Page,
     *,
@@ -2152,12 +2255,12 @@ async def google_login(
     log=print,
 ) -> bool:
     """
-    Google 로그인.
+    Google 로그인 (고속 자동 입력).
 
     mode:
-      - auto     : 아이디/비번 자동 + 2FA(타사 코드사이트 자동 → 실패시 팝업)
+      - auto     : 아이디/비번 자동 + 2FA 시크릿 자동
       - autofill : auto 별칭
-      - manual   : 브라우저 직접 + 2FA 필드 보이면 자동/팝업
+      - manual   : 브라우저 직접
       - skip     : 생략
     """
     success_url_contains = list(success_url_contains or SUCCESS_URL_HINTS)
@@ -2169,61 +2272,68 @@ async def google_login(
         otp.get("secret") or otp.get("otp_secret") or otp.get("totp_secret")
     )
     if has_secret:
-        log("[Google] ★ 2FA 시크릿 등록 — 코드 생성·복사·Google 입력·인증까지 전부 자동")
-        # secret 있으면 팝업 없이 full auto
+        log("[사람] 2FA 시크릿이 있어 인증 코드까지 자동으로 넣습니다.")
         ask_2fa = None
     if otp.get("url") or otp.get("otp_url"):
-        log(f"[Google] 2FA 타사 코드 URL: {otp.get('url') or otp.get('otp_url')}")
+        log(f"[Google] 2FA 보조 URL: {otp.get('url') or otp.get('otp_url')}")
 
-    # 속도: pause 상한 (GUI 기본 350~800 → 실사용은 빠르게)
-    autofill_pause_ms = max(100, min(int(autofill_pause_ms or 350), 600))
+    # 고속: pause 짧게
+    autofill_pause_ms = max(50, min(int(autofill_pause_ms or 200), 280))
 
-    log(f"[Google] 로그인 페이지 이동: {login_url}")
-    await page.goto(login_url, wait_until="domcontentloaded", timeout=90000)
-    await _human_delay_async(400)
+    if not (email or "").strip() and mode == "auto":
+        _report_google_fail(
+            log,
+            "이메일/비밀번호가 비어 있습니다. 홈 계정 표에 email|비밀번호|2FA시크릿을 넣고 저장하세요.",
+        )
+        return False
 
-    # 이미 로그인: probe 한 번만 빠르게 (추가 goto 생략 가능하면)
+    log(f"[사람] 구글 로그인 페이지를 엽니다… ({email or '계정 미입력'})")
+    try:
+        await page.goto(login_url, wait_until="domcontentloaded", timeout=60000)
+    except Exception as exc:
+        _report_google_fail(log, f"로그인 페이지를 열지 못했습니다: {exc}")
+        return False
+    await _human_delay_async(180)
+
     if await is_google_logged_in(page, probe=False):
-        log("[Google] 이미 로그인된 세션으로 보입니다.")
+        log("[사람] 이미 구글에 로그인된 상태입니다. 바로 진행합니다.")
         return True
-    # URL만으로 불확실하면 가벼운 확인
+
+    # 로그인 폼 보이면 probe(goto 추가) 생략 — 속도
     try:
         email_box = page.locator(
             'input[type="email"], input[name="identifier"], #identifierId'
         )
-        pw_box = page.locator(
-            'input[type="password"], input[name="Passwd"], input[name="password"]'
-        )
-        need_cred = False
-        if await email_box.count() > 0 and await email_box.first.is_visible():
-            need_cred = True
-        if await pw_box.count() > 0 and await pw_box.first.is_visible():
-            need_cred = True
-        if not need_cred and await is_google_logged_in(page, probe=True):
-            log("[Google] 이미 로그인된 세션으로 보입니다.")
+        need_cred = await email_box.count() > 0 and await email_box.first.is_visible()
+        if not need_cred:
+            pw_box = page.locator(
+                'input[type="password"], input[name="Passwd"], input[name="password"]'
+            )
+            need_cred = await pw_box.count() > 0 and await pw_box.first.is_visible()
+        if not need_cred and await is_google_logged_in(page, probe=False):
+            log("[사람] 이미 구글에 로그인된 상태입니다.")
             return True
     except Exception:
-        if await is_google_logged_in(page, probe=True):
-            log("[Google] 이미 로그인된 세션으로 보입니다.")
-            return True
+        pass
 
     if mode == "skip":
-        log("[Google] mode=skip — 로그인 생략")
+        log("[사람] 구글 로그인 단계를 건너뜁니다.")
         return False
 
     if mode == "auto":
         if not email and not password:
-            log(
-                "[Google] auto 모드이지만 이메일/비밀번호가 비어 있음 → 수동 대기로 전환\n"
-                "  ※ 홈 ② 에 email|비밀번호|2FA시크릿 을 넣고 다시 ▶ 원클릭 시작 하세요."
+            _report_google_fail(
+                log,
+                "자동 로그인인데 계정 정보가 없습니다. email|비밀번호|2FA 를 입력하세요.",
             )
             mode = "manual"
         else:
             log(
-                f"[Google] 자동 로그인 시작 (고속)"
-                f"{f' · {email}' if email else ''}"
-                f"{' · 비밀번호 있음' if password else ' · 비밀번호 없음'}"
-                f"{' · 2FA 자동' if has_secret else ''}"
+                f"[사람] 자동 로그인 시작 — "
+                f"{'이메일·' if email else ''}"
+                f"{'비밀번호·' if password else ''}"
+                f"{'2FA자동' if has_secret else '2FA없음(막힐 수 있음)'}"
+                " · 빠르게 입력합니다"
             )
             try:
                 status = await _auto_login_flow(
@@ -2233,55 +2343,98 @@ async def google_login(
                     pause_ms=autofill_pause_ms,
                     log=log,
                     ask_2fa=ask_2fa,
-                    manual_wait_sec=manual_wait_sec,
+                    manual_wait_sec=min(int(manual_wait_sec or 120), 180),
                     otp=otp,
                 )
             except Exception as exc:
-                log(f"[Google] 자동 로그인 오류: {exc}")
+                _report_google_fail(log, f"자동 로그인 중 오류: {exc}")
                 status = "need_manual"
 
             if status == "success":
-                log("[Google] 자동 로그인 성공")
+                log("[사람] 구글 자동 로그인에 성공했습니다.")
                 return True
             if status == "cancelled":
-                log("[Google] 2차 인증이 취소되어 로그인을 중단합니다.")
+                _report_google_fail(log, "2단계 인증이 취소되어 로그인을 멈췄습니다.")
                 return False
 
-            if status == "challenge":
-                log(
-                    "[Google] 2차 인증 미완료 — 팝업/브라우저 대기 "
-                    f"최대 {manual_wait_sec}초"
+            # 구글 화면 문구로 원인 설명
+            problem = await detect_google_login_problem(page)
+            if problem:
+                _report_google_fail(log, problem)
+            elif status == "challenge":
+                _report_google_fail(
+                    log,
+                    "2단계 인증(코드)을 통과하지 못했습니다. "
+                    "2FA 시크릿이 맞는지, 또는 전화 인증인지 확인하세요.",
                 )
+            elif status == "failed":
+                _report_google_fail(log, "이메일/비밀번호 입력이 거절되었습니다.")
             else:
-                log(
-                    f"[Google] 자동 입력이 끝나지 않음 — 브라우저 대기 최대 {manual_wait_sec}초"
+                _report_google_fail(
+                    log,
+                    "자동 입력이 끝나지 않았습니다. Octo 창 화면을 확인하세요. "
+                    f"(현재 주소: {(page.url or '')[:80]})",
                 )
 
-            return await wait_login_success(
+            # 비번/계정 오류면 길게 기다리지 않음
+            hard = bool(
+                problem
+                and any(
+                    k in problem
+                    for k in ("비밀번호", "계정을 찾을", "비어", "사용 중지", "실패 횟수")
+                )
+            )
+            if hard:
+                return False
+            # 캡차/본인확인 등만 짧게 수동 기회
+            wait_sec = 45 if ("캡차" in (problem or "") or "본인" in (problem or "")) else 25
+            if has_secret:
+                wait_sec = max(wait_sec, 50)
+            ok = await wait_login_success(
                 page,
                 success_url_contains=success_url_contains,
-                manual_wait_sec=manual_wait_sec,
+                manual_wait_sec=wait_sec,
                 log=log,
+                poll_ms=600,
                 ask_2fa=ask_2fa,
                 email=email,
                 pause_ms=autofill_pause_ms,
                 otp=otp,
             )
+            if not ok:
+                problem2 = await detect_google_login_problem(page)
+                if problem2:
+                    _report_google_fail(log, problem2)
+                else:
+                    _report_google_fail(
+                        log,
+                        "제한 시간 안에 구글 로그인을 끝내지 못했습니다. "
+                        "Octo 창을 직접 확인해 주세요.",
+                    )
+            return ok
 
     log(
-        f"[Google] 수동 로그인 모드: 브라우저에서 완료하세요. "
-        f"최대 {manual_wait_sec}초 (2FA 칸 보이면 타사URL/팝업 자동)"
+        f"[사람] 수동 로그인: Octo 창에서 직접 로그인해 주세요. 최대 {min(90, manual_wait_sec)}초"
     )
-    return await wait_login_success(
+    ok = await wait_login_success(
         page,
         success_url_contains=success_url_contains,
-        manual_wait_sec=manual_wait_sec,
+        manual_wait_sec=min(90, max(30, int(manual_wait_sec or 60))),
         log=log,
+        poll_ms=700,
         ask_2fa=ask_2fa,
         email=email,
         pause_ms=autofill_pause_ms,
         otp=otp,
     )
+    if not ok:
+        problem = await detect_google_login_problem(page)
+        _report_google_fail(
+            log,
+            problem
+            or "수동 로그인 시간 초과. 이메일·비밀번호·2FA를 확인하세요.",
+        )
+    return ok
 
 
 # ---------------------------------------------------------------------------

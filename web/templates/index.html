@@ -1004,6 +1004,16 @@ user_id=123'></textarea>
     </main>
   </div>
   <div id="toast" class="toast hidden"></div>
+  <div id="failModal" class="fail-modal hidden" role="alertdialog" aria-modal="true">
+    <div class="fail-modal-card">
+      <div class="fail-modal-head">
+        <strong>구글 로그인 안내</strong>
+        <button type="button" class="btn sm ghost" id="btnCloseFailModal">닫기</button>
+      </div>
+      <p id="failModalBody" class="fail-modal-body"></p>
+      <p class="hint">Octo Browser 창을 직접 확인해 주세요. 계정·비밀번호·2FA 시크릿을 고친 뒤 다시 START.</p>
+    </div>
+  </div>
   <script src="/static/js/app.js"></script>
 </body>
 </html>

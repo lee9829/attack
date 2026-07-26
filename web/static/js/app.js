@@ -178,6 +178,23 @@
     toast._t = setTimeout(() => el.classList.add("hidden"), 3200);
   }
 
+  function showFailModal(reason) {
+    const modal = $("#failModal");
+    const body = $("#failModalBody");
+    if (!modal || !body) {
+      toast(reason, "err");
+      return;
+    }
+    body.textContent = reason || "구글 로그인에 실패했습니다.";
+    modal.classList.remove("hidden");
+    toast("구글 로그인 실패 — 팝업 확인", "err");
+    pushCombatLine(`구글 로그인 실패: ${reason}`, "miss");
+  }
+
+  function hideFailModal() {
+    $("#failModal")?.classList.add("hidden");
+  }
+
   async function api(path, opts = {}) {
     const res = await fetch(path, {
       headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
@@ -1416,6 +1433,15 @@
       state.lastLogId = Math.max(state.lastLogId, line.id || 0);
       if (view) view.textContent += (view.textContent ? "\n" : "") + line.msg;
       appendBattleLine(line);
+      // 구글 실패 팝업
+      const m = String(line.msg || "");
+      const gm = m.match(/\[GOOGLE_FAIL\]\s*(.+)/i);
+      if (gm && gm[1]) {
+        showFailModal(gm[1].trim());
+      } else if (/구글 로그인 실패 이유:\s*(.+)/i.test(m)) {
+        const r = m.match(/구글 로그인 실패 이유:\s*(.+)/i);
+        if (r) showFailModal(r[1].trim());
+      }
     }
     if (view && atBottom) view.scrollTop = view.scrollHeight;
   }
@@ -1524,6 +1550,10 @@
     $("#btnClearCombat")?.addEventListener("click", () => {
       combatBuf.length = 0;
       paintCombatLog();
+    });
+    $("#btnCloseFailModal")?.addEventListener("click", hideFailModal);
+    $("#failModal")?.addEventListener("click", (e) => {
+      if (e.target === $("#failModal")) hideFailModal();
     });
 
     // game raid presets

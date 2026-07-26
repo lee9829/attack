@@ -1111,3 +1111,29 @@ td input {
 .hit-chip b { color: #3dd68c; }
 .miss-chip b { color: #ff6b6b; }
 .wow-table th { color: #c9b88a; }
+
+/* Google fail modal */
+.fail-modal {
+  position: fixed; inset: 0; z-index: 80;
+  background: rgba(0,0,0,0.55);
+  display: grid; place-items: center;
+  padding: 1rem;
+}
+.fail-modal.hidden { display: none !important; }
+.fail-modal-card {
+  width: min(480px, 94vw);
+  background: #161b24;
+  border: 1px solid #ff4d6d;
+  border-radius: 14px;
+  padding: 1rem 1.1rem;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+}
+.fail-modal-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 0.55rem; color: #ff8a9a;
+}
+.fail-modal-body {
+  margin: 0.4rem 0 0.6rem;
+  font-size: 1rem; line-height: 1.45; color: var(--text);
+  white-space: pre-wrap;
+}

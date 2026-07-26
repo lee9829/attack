@@ -122,8 +122,8 @@ def default_config() -> Dict[str, Any]:
                 "accounts.google.com/b/",
                 "drive.google.com",
             ],
-            "manual_wait_sec": 300,
-            "autofill_pause_ms": 350,
+            "manual_wait_sec": 90,
+            "autofill_pause_ms": 150,
             "otp_fetch": {
                 "enabled": True,
                 "secret": "",
