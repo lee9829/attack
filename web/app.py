@@ -539,6 +539,8 @@ async def api_stop():
 # ── Windows agent (local Octo on PC) ─────────────────────────
 class AgentHelloBody(BaseModel):
     name: str = "windows"
+    octo: str = ""
+    busy: bool = False
 
 
 class AgentLogBody(BaseModel):
@@ -549,35 +551,6 @@ class AgentFinishBody(BaseModel):
     ok: bool = True
     result: Dict[str, Any] = Field(default_factory=dict)
     error: str = ""
-
-
-@app.post("/api/agent/heartbeat")
-async def api_agent_heartbeat(body: AgentHelloBody):
-    snap = manager.agent_heartbeat(body.name)
-    return {"ok": True, "agent": snap, "server_time": time.time()}
-
-
-@app.get("/api/agent/status")
-async def api_agent_status():
-    return {"ok": True, "agent": manager.agent_snapshot(), "status": manager.snapshot()}
-
-
-@app.get("/api/agent/next-job")
-async def api_agent_next_job():
-    """Windows agent polls this to receive a job queued by the web Start button."""
-    manager.agent_heartbeat("windows")
-    job = manager.agent_pull_job()
-    if not job:
-        return {"ok": True, "job": None}
-    manager.log(f"[Agent] 작업 전달 → {job.get('id')}")
-    return {"ok": True, "job": job}
-
-
-@app.post("/api/agent/log")
-async def api_agent_log(body: AgentLogBody):
-    if body.msg:
-        manager.agent_push_log(body.msg)
-    return {"ok": True}
 
 
 class AgentProgressBody(BaseModel):
@@ -600,10 +573,48 @@ class AgentProgressBody(BaseModel):
     active_jobs: list = Field(default_factory=list)
 
 
+@app.post("/api/agent/heartbeat")
+async def api_agent_heartbeat(body: AgentHelloBody):
+    snap = manager.agent_heartbeat(body.name, busy=bool(body.busy), octo=body.octo or "")
+    return {"ok": True, "agent": snap, "server_time": time.time()}
+
+
+@app.get("/api/agent/status")
+async def api_agent_status():
+    return {"ok": True, "agent": manager.agent_snapshot(), "status": manager.snapshot()}
+
+
+@app.get("/api/agent/next-job")
+async def api_agent_next_job(request: Request):
+    """Windows agent polls this to receive a job queued by the web Start button."""
+    # keep online without overwriting friendly agent name when empty
+    name = (request.query_params.get("name") or "").strip()
+    manager.agent_heartbeat(name or None)
+    job = manager.agent_pull_job()
+    if not job:
+        return {"ok": True, "job": None}
+    manager.log(f"[Agent] 작업 전달 → {job.get('id')}")
+    return {"ok": True, "job": job}
+
+
+@app.post("/api/agent/log")
+async def api_agent_log(body: AgentLogBody):
+    if body.msg:
+        manager.agent_push_log(body.msg)
+    return {"ok": True}
+
+
 @app.post("/api/agent/progress")
 async def api_agent_progress(body: AgentProgressBody):
     manager.agent_push_progress(body.model_dump())
     return {"ok": True}
+
+
+@app.post("/api/agent/release")
+async def api_agent_release():
+    """Agent could not start (e.g. Octo offline) — put job back in queue."""
+    manager.agent_release_job()
+    return {"ok": True, "agent": manager.agent_snapshot()}
 
 
 @app.post("/api/agent/finish")

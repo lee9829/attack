@@ -139,38 +139,94 @@ class JobManager:
 
     def agent_snapshot(self) -> Dict[str, Any]:
         with self._lock:
-            online = self._agent_online and (time.time() - self._agent_last_seen) < 45
+            # HB every ~8s; allow brief network blips
+            online = self._agent_online and (time.time() - self._agent_last_seen) < 90
+            job = self._agent_job or {}
+            prog = dict(self.state.progress or {})
             return {
                 "online": online,
                 "name": self._agent_name,
                 "last_seen": self._agent_last_seen,
                 "pending_job": bool(self._agent_job),
+                "leased": bool(job.get("leased")),
+                "job_id": job.get("id") or "",
                 "mode": self._agent_mode,
+                "busy": bool(
+                    prog.get("agent_busy")
+                    or (self.state.running and self._agent_mode and job.get("leased"))
+                ),
+                "octo": prog.get("octo_local") or "",
+                "active_workers": len(prog.get("active_jobs") or []),
             }
 
-    def agent_heartbeat(self, name: str = "windows") -> Dict[str, Any]:
+    def agent_heartbeat(
+        self,
+        name: Optional[str] = "windows",
+        *,
+        busy: bool = False,
+        octo: str = "",
+    ) -> Dict[str, Any]:
         with self._lock:
             self._agent_online = True
             self._agent_last_seen = time.time()
-            self._agent_name = (name or "windows").strip() or "windows"
+            if name:
+                self._agent_name = str(name).strip() or self._agent_name or "windows"
+            prog = dict(self.state.progress or {})
+            if octo:
+                prog["octo_local"] = octo
+            prog["agent_busy"] = bool(busy)
+            # while agent reports busy, keep lease fresh so long jobs never re-queue
+            if busy and self._agent_job and self._agent_job.get("leased"):
+                self._agent_job["leased_at"] = time.time()
+            self.state.progress = prog
         return self.agent_snapshot()
 
     def agent_pull_job(self) -> Optional[Dict[str, Any]]:
-        """Windows agent pulls one pending job (if any)."""
+        """Windows agent pulls one pending job. Re-lease only if agent went offline."""
         with self._lock:
             if not self.state.running or not self._agent_mode:
                 return None
             if self._cancel.is_set():
                 return None
             job = self._agent_job
-            if not job or job.get("leased"):
+            if not job:
                 return None
+            if job.get("leased"):
+                online = self._agent_online and (time.time() - self._agent_last_seen) < 45
+                leased_at = float(job.get("leased_at") or 0)
+                # NEVER re-assign while agent is still heartbeating (jobs can run 30m+)
+                if online:
+                    return None
+                # offline: wait at least 60s after last lease/activity before requeue
+                if leased_at and (time.time() - leased_at) < 60:
+                    return None
+                self.log("[Agent] 에이전트 오프라인 · lease 만료 → 재할당")
+                job["leased"] = False
             job["leased"] = True
             job["leased_at"] = time.time()
-            self.state.status = "Agent running (local Octo)…"
-            self.state.progress = {"phase": "agent", "engine": "agent"}
-            # return copy without mutating shared unexpectedly
+            self.state.status = "PC Octo 오토 실행 중…"
+            self.state.progress = {
+                **(self.state.progress or {}),
+                "phase": "agent",
+                "engine": "agent",
+                "agent_busy": True,
+            }
             return dict(job)
+
+    def agent_release_job(self) -> None:
+        """Put leased job back in queue (Octo offline / soft retry)."""
+        with self._lock:
+            job = self._agent_job
+            if not job:
+                return
+            job["leased"] = False
+            job.pop("leased_at", None)
+            prog = dict(self.state.progress or {})
+            prog["agent_busy"] = False
+            prog["phase"] = "agent_queue"
+            self.state.progress = prog
+            self.state.status = "에이전트 대기 · Octo 연결 후 자동 재시도"
+        self.log("[Agent] 작업 큐로 반환 (재시도 대기)")
 
     def agent_push_log(self, msg: str) -> None:
         self.log(str(msg))
@@ -188,16 +244,25 @@ class JobManager:
             for k, v in data.items():
                 if k == "active_jobs":
                     continue
+                if v is None or v == "":
+                    # don't wipe existing fields with empty progress pings
+                    if k not in ("phase", "action", "loop", "parallel", "success", "fail", "total", "job"):
+                        continue
                 prev[k] = v
             if data.get("phase"):
                 prev["phase"] = data["phase"]
+            prev["agent_busy"] = True
+            # activity refreshes lease — long multi-loop jobs stay assigned
+            if self._agent_job and self._agent_job.get("leased"):
+                self._agent_job["leased_at"] = time.time()
             self.state.progress = prev
             par = prev.get("parallel") or 1
             n_act = len(prev.get("active_jobs") or [])
             loop = prev.get("loop")
+            action = prev.get("action") or prev.get("phase") or "run"
             if self._agent_mode:
                 self.state.status = (
-                    f"오토 실행 중 · 동시 {n_act or par}"
+                    f"오토 · {action} · 동시 {n_act or par}"
                     + (f" · 회차 {loop}" if loop else "")
                 )
 

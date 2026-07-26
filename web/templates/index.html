@@ -105,8 +105,17 @@
           </div>
         </div>
 
-        <div id="workerBoard" class="worker-board"></div>
-        <div id="activeJobs" class="active-jobs muted">실행 중 작업 없음</div>
+        <div class="attack-hud">
+          <div class="attack-hud-head">
+            <h2>실시간 공격 추적 (위젯)</h2>
+            <span class="hint" id="attackHudMeta">대기 · 에이전트 연결 확인 중</span>
+          </div>
+          <p class="hint" style="margin:0 0 0.5rem">
+            PC <strong>OctoAgent.exe</strong> + Octo Local 연동 · 프로필 / 출구IP / 구글로그인 / 검색·클릭이 카드로 실시간 표시
+          </p>
+          <div id="workerBoard" class="worker-board"></div>
+          <div id="activeJobs" class="active-jobs muted">실행 중 작업 없음</div>
+        </div>
         <div id="otpPanel" class="otp-panel hidden">
           <strong>2FA 코드 입력</strong>
           <p id="otpPrompt" class="hint"></p>

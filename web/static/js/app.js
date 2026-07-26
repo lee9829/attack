@@ -37,8 +37,8 @@
     const list = Array.isArray(jobs) ? jobs : [];
     if (!list.length) {
       board.innerHTML = running
-        ? `<div class="worker-empty">동시 워커 준비 중…</div>`
-        : `<div class="worker-empty">대기 · START 하면 프로필·IP·클릭이 카드로 표시됩니다</div>`;
+        ? `<div class="worker-empty">동시 워커 기동 중… PC 에이전트 로그 확인</div>`
+        : `<div class="worker-empty">대기 · START 하면 프로필·IP·클릭이 위젯 카드로 표시됩니다</div>`;
       return;
     }
     board.innerHTML = list
@@ -51,10 +51,12 @@
             : /시도|진행|로그인/i.test(g)
               ? "run"
               : "";
-        return `<div class="worker-card">
+        const phase = String(a.action || a.phase || "run");
+        const live = /click|검색|login|proxy|browser|run|진행/i.test(phase);
+        return `<div class="worker-card ${live ? "wc-live" : ""}">
           <div class="wc-head">
-            <span class="wc-job">#${a.job ?? "?"} 동시</span>
-            <span class="wc-phase">${esc(a.action || a.phase || "run")}</span>
+            <span class="wc-job"><i class="wc-dot"></i>#${a.job ?? "?"} 워커</span>
+            <span class="wc-phase">${esc(phase)}</span>
           </div>
           <div class="wc-row"><span>프로필</span><b>${esc(a.profile || "—")}</b></div>
           <div class="wc-row"><span>계정</span><b>${esc(a.email || "—")}</b></div>
@@ -878,16 +880,34 @@
     try {
       const data = await api("/api/agent/status");
       const a = data.agent || {};
+      const s = data.status || {};
+      const p = s.progress || {};
       const text = a.online
-        ? `연결됨 (${a.name || "PC"})`
-        : "끊김 — OctoAgent.exe 실행 필요";
-      const color = a.online ? "#3dd68c" : "#f5a524";
+        ? a.busy
+          ? `실행 중 (${a.name || "PC"}) · 워커 ${a.active_workers || 0}`
+          : `연결됨 (${a.name || "PC"})`
+        : "끊김 — Desktop OctoAgent.exe 실행";
+      const color = a.online ? (a.busy ? "#5b9dff" : "#3dd68c") : "#f5a524";
       els.forEach((el) => {
         el.textContent = text;
         el.style.color = color;
       });
       if (led) {
-        led.className = "led " + (a.online ? "on" : "warn");
+        led.className = "led " + (a.online ? (a.busy ? "run" : "on") : "warn");
+      }
+      const hud = $("#attackHudMeta");
+      if (hud) {
+        if (!a.online) {
+          hud.textContent = "에이전트 오프라인 · OctoAgent.exe 실행 필요";
+        } else if (a.busy) {
+          const act = p.action || p.phase || "run";
+          const n = a.active_workers || (p.active_jobs || []).length || 0;
+          hud.textContent = `LIVE · ${act} · 동시 ${n} · job ${a.job_id || "—"} · Octo ${a.octo || p.octo_local || "?"}`;
+        } else if (s.running) {
+          hud.textContent = "큐 대기 · 에이전트가 작업 가져가는 중…";
+        } else {
+          hud.textContent = "에이전트 대기 · START 가능";
+        }
       }
     } catch (e) {
       els.forEach((el) => {
