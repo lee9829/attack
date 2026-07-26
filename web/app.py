@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -44,8 +44,10 @@ from web.config_io import (  # noqa: E402
 from web.job_manager import JobManager  # noqa: E402
 from src.octo_client import OctoClient, OctoError  # noqa: E402
 
-APP_VERSION = "2.3.1"
+APP_VERSION = "2.4.0"
 BASE_DIR = _ROOT
+# Windows 통합 에이전트 EXE (웹에서 다운로드)
+DOWNLOADS_DIR = BASE_DIR / "downloads"
 
 manager = JobManager(BASE_DIR)
 
@@ -220,17 +222,71 @@ class TestConnBody(BaseModel):
     octo_auto_login: bool = True
 
 
+def _agent_exe_path() -> Optional[Path]:
+    """Locate OctoAgent.exe for browser download (prefer downloads/)."""
+    candidates = [
+        DOWNLOADS_DIR / "OctoAgent.exe",
+        BASE_DIR / "dist" / "OctoAgent.exe",
+        BASE_DIR / "agent" / "OctoAgent.exe",
+    ]
+    for p in candidates:
+        try:
+            if p.is_file() and p.stat().st_size > 1_000_000:
+                return p
+        except Exception:
+            continue
+    return None
+
+
 # ── pages ────────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
+    exe = _agent_exe_path()
     return templates.TemplateResponse(
         request,
         "index.html",
         {
             "version": APP_VERSION,
-            "title": "Octo Google Site Automation",
+            "title": "Octo 소탕 통제",
+            "agent_download_ready": bool(exe),
+            "agent_download_mb": round((exe.stat().st_size / (1024 * 1024)), 1) if exe else 0,
         },
     )
+
+
+@app.get("/download/OctoAgent.exe")
+async def download_octo_agent():
+    """웹 로그인 후 PC용 통합 에이전트 EXE 다운로드."""
+    path = _agent_exe_path()
+    if not path:
+        raise HTTPException(
+            status_code=404,
+            detail="OctoAgent.exe 가 서버에 아직 없습니다. 관리자에게 업로드를 요청하세요.",
+        )
+    return FileResponse(
+        path=str(path),
+        media_type="application/octet-stream",
+        filename="OctoAgent.exe",
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": 'attachment; filename="OctoAgent.exe"',
+        },
+    )
+
+
+@app.get("/api/download/agent-info")
+async def api_agent_download_info():
+    path = _agent_exe_path()
+    if not path:
+        return {"ok": True, "available": False, "size_mb": 0, "url": "/download/OctoAgent.exe"}
+    return {
+        "ok": True,
+        "available": True,
+        "size_mb": round(path.stat().st_size / (1024 * 1024), 1),
+        "mtime": path.stat().st_mtime,
+        "url": "/download/OctoAgent.exe",
+        "name": "OctoAgent.exe",
+    }
 
 
 # ── config ───────────────────────────────────────────────────

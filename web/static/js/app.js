@@ -22,7 +22,7 @@
     cookies: ["쿠키", "세션 주입"],
     settings: ["엔진 설정", "agent · API · 동시 프로필"],
     logs: ["실시간 로그", "원본 실행 로그"],
-    help: ["실행 가이드", "보안팀 정확한 실행 순서"],
+    help: ["쉬운 매뉴얼", "왜 3개? · 다운로드 · 4단계 실행"],
   };
 
   function setMacroStep(step) {

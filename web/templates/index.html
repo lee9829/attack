@@ -22,7 +22,8 @@
         <button type="button" class="nav-btn" data-page="accounts">Octo 계정</button>
         <button type="button" class="nav-btn" data-page="proxies">프록시</button>
         <button type="button" class="nav-btn" data-page="settings">엔진 설정</button>
-        <button type="button" class="nav-btn" data-page="help">실행 가이드</button>
+        <button type="button" class="nav-btn" data-page="help">쉬운 매뉴얼</button>
+        <a class="nav-btn nav-dl" id="btnDlAgentNav" href="/download/OctoAgent.exe">⬇ 에이전트 받기</a>
         <button type="button" class="nav-btn nav-adv" data-page="search">검색 상세</button>
         <button type="button" class="nav-btn nav-adv" data-page="ops">OPS 고급</button>
         <button type="button" class="nav-btn nav-adv" data-page="cookies">쿠키</button>
@@ -55,22 +56,55 @@
       <section class="page active" id="page-home">
         <div class="mission-guide card">
           <div class="mission-head">
-            <h2>실행 순서 (이대로만 하면 됨)</h2>
+            <h2>3가지만 기억하세요 (게임 오토와 같음)</h2>
             <span class="pill ok" id="missionReadyPill">준비 체크</span>
           </div>
+          <div class="why-three">
+            <div class="why-card">
+              <div class="why-num">①</div>
+              <div>
+                <b>이 웹사이트</b>
+                <p>리모컨입니다. START/STOP · 설정 · 로그 보기만 합니다. 브라우저는 안 켭니다.</p>
+              </div>
+            </div>
+            <div class="why-card">
+              <div class="why-num">②</div>
+              <div>
+                <b>Octo Browser</b>
+                <p>실제 창입니다. 프로필·프록시로 구글을 엽니다. <strong>PC에서 항상 켜 두세요.</strong></p>
+              </div>
+            </div>
+            <div class="why-card">
+              <div class="why-num">③</div>
+              <div>
+                <b>통합 에이전트 (exe)</b>
+                <p>웹 ↔ PC Octo 연결 프로그램. 웹에서 받아 실행하면 됩니다. <strong>끄면 작전 중단.</strong></p>
+              </div>
+            </div>
+          </div>
+          <div class="dl-banner">
+            <div>
+              <strong>PC 통합 에이전트 받기</strong>
+              <p class="hint" style="margin:0.2rem 0 0">
+                다운로드 → 더블클릭 실행 → 「연결됨」 확인. (약 <span id="agentDlMb">{{ agent_download_mb or '?' }}</span> MB)
+                {% if not agent_download_ready %}<span class="warn-inline"> · 서버 파일 준비 중일 수 있음</span>{% endif %}
+              </p>
+            </div>
+            <a class="btn primary btn-lg" id="btnDlAgent" href="/download/OctoAgent.exe">⬇ OctoAgent.exe 다운로드</a>
+          </div>
           <ol class="mission-steps">
-            <li><b>PC</b>에서 <strong>Octo Browser</strong> 실행 → 로그인 유지 (Local API :58888)</li>
-            <li>바탕화면 <strong>OctoAgent.exe</strong> 더블클릭 → 창에 「연결됨」 표시 (끄지 말 것)</li>
-            <li>이 사이트에서 <b>계정 · 검색어 · 타겟 도메인 · 프록시</b> 입력 후 <b>저장</b></li>
-            <li>상단 또는 우측 <strong>▶ START</strong> → Octo 창이 자동으로 로그인→검색→1클릭</li>
-            <li>아래 <strong>실시간 추적 위젯</strong>에서 프로필·IP·검색어·클릭 URL 확인 · 끝이면 ■ STOP</li>
+            <li><b>Octo Browser</b> 실행 + 로그인 (Local API 켜짐)</li>
+            <li>위 버튼으로 <strong>OctoAgent.exe</strong> 받아 실행 → 「연결됨」 (창 유지)</li>
+            <li>이 사이트에서 계정·검색어·타겟·프록시 입력 → <b>저장</b></li>
+            <li><strong>▶ START</strong> → Octo가 자동 로그인·검색·1클릭</li>
+            <li>아래 위젯·증거 보드에서 프로필/IP/클릭 확인 · 끝이면 ■ STOP</li>
           </ol>
           <div class="mission-flow">
+            <span>웹 START</span><i>→</i>
+            <span>에이전트</span><i>→</i>
             <span>Octo 프로필</span><i>→</i>
-            <span>구글 로그인</span><i>→</i>
-            <span>검색어 다양 조회</span><i>→</i>
-            <span>타겟 1클릭</span><i>→</i>
-            <span>체류·로그</span>
+            <span>검색·1클릭</span><i>→</i>
+            <span>증거 로그</span>
           </div>
         </div>
 
@@ -796,56 +830,89 @@ user_id=123'></textarea>
 
       <!-- HELP -->
       <section class="page" id="page-help">
-        <div class="card prose">
-          <h2>보안팀 실행 가이드 — 정확히 이 순서</h2>
-          <p>
-            <strong>웹사이트 = 작전 리모컨</strong> ·
-            <strong>OctoAgent.exe = 연결기</strong> ·
-            <strong>Octo Browser 프로필 = 실제 조사 창</strong>
+        <div class="card prose easy-manual">
+          <h2>쉬운 매뉴얼 (따라만 하면 됨)</h2>
+
+          <div class="dl-banner" style="margin:0.8rem 0 1.2rem">
+            <div>
+              <strong>PC 통합 에이전트 받기</strong>
+              <p class="hint" style="margin:0.2rem 0 0">다운로드 → 더블클릭 실행 → 「연결됨」 확인</p>
+            </div>
+            <a class="btn primary btn-lg" href="/download/OctoAgent.exe">⬇ OctoAgent.exe 다운로드</a>
+          </div>
+
+          <h3>왜 프로그램이 3개예요?</h3>
+          <p>게임 오토와 같습니다. 역할이 나뉩니다.</p>
+          <table class="manual-table">
+            <thead>
+              <tr><th>이름</th><th>역할</th><th>비유</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><b>이 웹사이트</b></td>
+                <td>켜기/끄기, 설정, 로그 보기</td>
+                <td>리모컨 · 지휘소</td>
+              </tr>
+              <tr>
+                <td><b>Octo Browser</b></td>
+                <td>진짜 브라우저 창 (프로필·프록시)</td>
+                <td>캐릭터(실제 손)</td>
+              </tr>
+              <tr>
+                <td><b>OctoAgent.exe</b></td>
+                <td>웹 명령을 PC Octo로 전달</td>
+                <td>오토 연결 프로그램</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="hint">
+            서버(VPS)에는 Octo 창이 안 뜹니다. 그래서
+            <strong>윈도우 PC에 Octo + 에이전트</strong>가 필요합니다. 웹만으로는 구글 창을 열 수 없습니다.
           </p>
-          <h3>① PC 준비 (1회)</h3>
-          <ol>
-            <li><strong>Octo Browser</strong> 설치·실행 → 팀 계정 로그인 유지</li>
-            <li>Octo 설정에서 <strong>Local API</strong> 켜짐 확인 (기본 <code>127.0.0.1:58888</code>)</li>
-            <li>바탕화면 <strong>OctoAgent.exe</strong> 실행 → 창에 <em>연결됨 · 대기 중</em> / <em>Octo: Local OK</em></li>
-            <li>에이전트 창은 <strong>절대 닫지 말 것</strong> (게임 오토 프로그램처럼 상주)</li>
+
+          <h3>딱 4번만 하면 끝</h3>
+          <ol class="big-steps">
+            <li>
+              <b>Octo Browser 켜기</b><br />
+              PC에서 Octo 실행 → 로그인 유지
+            </li>
+            <li>
+              <b>에이전트 받기 · 실행</b><br />
+              위 <strong>다운로드</strong> → <code>OctoAgent.exe</code> 더블클릭<br />
+              <em>연결됨 · 대기 중</em> / <em>Octo: Local OK</em> 보이면 성공.<br />
+              <strong>이 창은 끄지 마세요.</strong>
+            </li>
+            <li>
+              <b>웹에서 입력</b><br />
+              계정 · 검색어 · 타겟 · 프록시 · Octo API 토큰 → <b>저장</b>
+            </li>
+            <li>
+              <b>▶ START</b><br />
+              Octo가 자동: 로그인 → 검색 → 타겟 1클릭 → 증거 로그
+            </li>
           </ol>
-          <h3>② 웹 사이트 로그인</h3>
-          <ul>
-            <li>URL: <code>http://66.29.149.197:8787/</code></li>
-            <li>ID: <code>admin</code> · 비밀번호: 데스크탑 <code>Octo-Web-Login.txt</code></li>
-            <li>좌측 <strong>PC 에이전트</strong>가 초록/파랑이면 연결 성공</li>
-          </ul>
-          <h3>③ 작전 입력</h3>
+
+          <h3>START 하면 안에서 뭐가 되나요?</h3>
           <ol>
-            <li><b>Google 계정</b> — email|비밀번호|2FA시크릿 (Octo 프로필명 자동/수동)</li>
-            <li><b>검색어</b> — 여러 개 (변형 확장 버튼으로 다양화 가능)</li>
-            <li><b>타겟 사이트</b> — 추적·소탕 대상 도메인</li>
-            <li><b>프록시</b> — 프로필별 출구 IP</li>
-            <li><b>작전 모드</b> — 1클릭·검색어 로테이트·광고 포함(기본 권장)</li>
-            <li>Octo <b>API 토큰</b> 입력 → <b>저장</b></li>
+            <li>웹이 「일해라」 신호를 서버에 넣음</li>
+            <li>PC 에이전트가 그 일을 가져감</li>
+            <li>에이전트가 Octo 프로필을 여러 개 켬</li>
+            <li>각 프로필: 구글 로그인 → 검색 → 타겟/광고 1클릭</li>
+            <li>웹 증거 보드에 프로필 · IP · 실제클릭 YES/NO 표시</li>
           </ol>
-          <h3>④ START 후 한 바퀴 (오토 게임 루프)</h3>
-          <ol>
-            <li>웹 START → 서버가 작업을 PC 에이전트에 전달</li>
-            <li>에이전트가 Octo 프로필 Start (동시 N개)</li>
-            <li>구글 로그인 (2FA 시크릿 있으면 자동)</li>
-            <li>검색어로 Google 조회 (프로필마다 검색어 순서 다름)</li>
-            <li>타겟 도메인/광고 매칭 → <strong>정확히 1클릭</strong></li>
-            <li>체류·스크롤 로그 → 프로필 중지 → 다음 계정/회차</li>
-          </ol>
-          <h3>⑤ 실시간 확인</h3>
-          <ul>
-            <li>통제판 <strong>실시간 작전 추적 위젯</strong> — 프로필 / IP / 구글 / 검색어 / 클릭 URL</li>
-            <li>활동 로그 필터: 프로필 · IP · 검색 · 클릭 · 구글</li>
-            <li>문제 시 ■ STOP 후 에이전트 로그 창 확인</li>
-          </ul>
+
           <h3>자주 하는 실수</h3>
           <ul>
             <li>Octo만 켜고 에이전트 안 켬 → START 해도 PC로 안 감</li>
             <li>에이전트 창 닫음 → 「에이전트 중단」</li>
-            <li>검색어/도메인 비움 → 작업 실패</li>
-            <li>옛 exe 사용 → 반드시 새 <code>Desktop\OctoAgent.exe</code></li>
+            <li>검색어·타겟 비움 → 실패</li>
+            <li>웹 로그인 없이 다운로드 → 비밀번호 창 (정상, 로그인 후 다시)</li>
+          </ul>
+
+          <h3>로그인</h3>
+          <ul>
+            <li>사이트: <code>http://66.29.149.197:8787/</code></li>
+            <li>ID: <code>admin</code> · 비번: <code>Octo-Web-Login.txt</code></li>
           </ul>
         </div>
       </section>
