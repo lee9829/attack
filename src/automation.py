@@ -2335,22 +2335,40 @@ async def _human_scroll(
     allow_up: bool = True,
     up_chance: float = 0.22,
 ) -> None:
-    """Natural scroll: mostly down, occasional small up, variable speed."""
-    for i in range(max(1, steps)):
+    """
+    사람처럼 스크롤: 거리·간격·위아래가 매번 다름 (기계 패턴 방지).
+    """
+    n = max(1, steps + random.randint(-1, 2))
+    for i in range(n):
+        # 가끔 짧은 멈춤(읽는 척) 후 스크롤
+        if random.random() < 0.28:
+            await _rand_delay(400, 1600)
         go_up = allow_up and random.random() < up_chance and i > 0
-        magnitude = random.randint(140, 620)
+        # 스크롤 거리를 넓게 분산
+        if random.random() < 0.15:
+            magnitude = random.randint(40, 120)  # 살짝만
+        elif random.random() < 0.2:
+            magnitude = random.randint(500, 900)  # 확 내림
+        else:
+            magnitude = random.randint(160, 520)
         delta = -magnitude if go_up else magnitude
         try:
-            # slight horizontal jitter
-            dx = random.randint(-20, 20)
+            dx = random.randint(-35, 35)
             await page.mouse.wheel(dx, delta)
         except Exception:
             try:
-                await page.evaluate(f"window.scrollBy({random.randint(-10,10)}, {delta})")
+                await page.evaluate(
+                    f"window.scrollBy({random.randint(-15,15)}, {delta})"
+                )
             except Exception:
                 pass
-        # reading pause between scrolls
-        await _rand_delay(280, 1100 if not go_up else 700)
+        # 스크롤 사이 쉬는 시간도 불규칙
+        lo, hi = (350, 1400) if not go_up else (250, 900)
+        if random.random() < 0.12:
+            hi += 1200  # 가끔 오래 멈춤
+        await _rand_delay(lo, hi)
+        if random.random() < 0.18:
+            await _mouse_wander(page, moves=1)
 
 
 async def _human_move_near(page: Page, locator: Locator) -> None:
@@ -3185,23 +3203,22 @@ async def _click_serp_result(
             await _rand_delay(150, 500)
         except Exception:
             pass
-        ip_hint = f" 출구IP={evidence['ip']}"
-        ad_mark = " [광고]" if is_ad else " [유기]"
+        kind = "광고 링크" if is_ad else "검색 결과 링크"
         log(
-            f"[CLICK] 클릭 시도{ad_mark} → {real} · 프로필={evidence['profile']} · "
-            f"작업={evidence['job']}{ip_hint}"
+            f"[사람] 지금 {kind}를 누르려 합니다. "
+            f"주소는 {real[:80]}{'…' if len(real)>80 else ''} 입니다."
         )
         await el.click(timeout=15000)
     except Exception as click_exc:
         method = "goto_fallback"
-        evidence["error"] = f"요소클릭실패→goto: {click_exc}"
-        log(f"[검색] 요소 클릭 실패({click_exc}) → URL 직접 이동 {real}")
+        evidence["error"] = f"링크 클릭이 안 되어 주소로 바로 이동: {click_exc}"
+        log("[사람] 링크가 잘 안 눌려서, 같은 주소로 직접 이동합니다.")
         try:
             await page.goto(real, wait_until="domcontentloaded", timeout=90000)
         except Exception as go_exc:
-            evidence["error"] = f"goto 실패: {go_exc}"
+            evidence["error"] = f"직접 이동도 실패: {go_exc}"
             evidence["method"] = method
-            log(f"[검색] 직접 이동 실패: {go_exc}")
+            log("[사람] 결국 그 주소로 들어가지 못했습니다.")
             if hasattr(log, "click_evidence"):
                 log.click_evidence(evidence)  # type: ignore[attr-defined]
             return evidence
@@ -3211,7 +3228,10 @@ async def _click_serp_result(
         await page.wait_for_load_state("domcontentloaded", timeout=90000)
     except Exception:
         pass
-    await _rand_delay(900, 2000)
+    # 사람처럼 도착 직후 잠깐 멈춤 (고정 시간 아님)
+    await _rand_delay(700, 2200)
+    if random.random() < 0.4:
+        await _mouse_wander(page, moves=random.randint(1, 2))
     final_url = page.url or ""
     final_host = urlparse(final_url).netloc or ""
     evidence["final_url"] = final_url
@@ -3219,8 +3239,11 @@ async def _click_serp_result(
 
     if require_domain and allowed and not _is_allowed_host(final_host, allowed):
         evidence["host_ok"] = False
-        evidence["error"] = f"도착 호스트 불일치 ({final_host})"
-        log(f"[검색] 가드: 도착 호스트 대상 아님 ({final_host}) — 이 클릭 무효")
+        evidence["error"] = f"다른 사이트({final_host})로 가서 무효 처리"
+        log(
+            f"[사람] 눌러 보니 예상과 다른 사이트({final_host})라서 "
+            "이번 클릭은 세지 않습니다."
+        )
         if hasattr(log, "click_evidence"):
             log.click_evidence(evidence)  # type: ignore[attr-defined]
         return evidence
@@ -3230,12 +3253,8 @@ async def _click_serp_result(
     evidence["ok"] = True
     evidence["error"] = ""
     log(
-        f"[검색] ★ 사이트 도착 확정 url={final_url} · 호스트={final_host} · "
-        f"출구IP={evidence['ip']} · 프로필={evidence['profile']}"
-    )
-    log(
-        f"[CLICK] 클릭 확정 · 방법={method} · 광고={is_ad} · "
-        f"프로필={evidence['profile']} · IP={evidence['ip']} · 최종URL={final_url}"
+        f"[사람] 사이트에 들어왔습니다. "
+        f"화면 주소: {final_url[:90]}{'…' if len(final_url)>90 else ''}"
     )
     if hasattr(log, "click_evidence"):
         log.click_evidence(evidence)  # type: ignore[attr-defined]
@@ -3297,9 +3316,11 @@ async def _find_and_click_many_own_sites(
     verified_clicks = 0
 
     log(
-        f"[검색] 다건 클릭 모드 keyword='{keyword}' 자사도메인={len(domain_set or allowed)}개 "
-        f"path정확={len(paths_exact_set or [])} urls={len(full_url_set or [])} "
-        f"목표클릭={max_clicks} SERP페이지={max_pages} ads_skip={skip_ads}"
+        f"[사람] 구글에서「{keyword}」검색 결과를 살핍니다. "
+        f"목표 사이트 {len(domain_set or allowed)}개, "
+        f"이 검색에서 클릭은 최대 {max_clicks}번, "
+        f"결과 페이지는 최대 {max_pages}장까지 봅니다."
+        + (" (광고 결과는 건너뜀)" if skip_ads else " (광고 결과도 포함)")
     )
     if path_targets:
         log(f"[검색] ★ path 타겟(이 path만 클릭): {path_targets}")
@@ -3319,7 +3340,8 @@ async def _find_and_click_many_own_sites(
 
         page = await ensure_live_page(page, browser, log)
         log(
-            f"[검색] SERP {page_no}/{max_pages} 스캔 · 이미 클릭 {len(clicked_keys)}/{max_clicks}"
+            f"[사람] 검색 결과 {page_no}페이지를 봅니다. "
+            f"(이미 누른 링크 {len(clicked_keys)}/{max_clicks})"
         )
         if human.get("scroll", True):
             await _human_scroll(
@@ -3364,14 +3386,21 @@ async def _find_and_click_many_own_sites(
                 continue
             fresh.append((sc, el, u, t, key))
 
-        log(f"[검색] 자사 후보 {len(matches)}개 중 신규 {len(fresh)}개")
-        for rank, (sc, _el, u, t, _k) in enumerate(fresh[:8], start=1):
-            log(f"[검색]   #{rank} score={sc} url={u} title='{(t or '')[:45]}'")
+        log(
+            f"[사람] 이 페이지에서 목표와 맞는 링크를 "
+            f"{len(fresh)}개 찾았습니다."
+            + (f" (전체 후보 {len(matches)}개 중)" if len(matches) != len(fresh) else "")
+        )
+        for rank, (sc, _el, u, t, _k) in enumerate(fresh[:5], start=1):
+            log(
+                f"[사람] 후보 {rank}: {(t or '(제목 없음)')[:40]} "
+                f"— {u[:55]}{'…' if len(u)>55 else ''}"
+            )
 
         if not fresh:
             if page_no < max_pages:
                 if not await _goto_next_serp_page(page, log):
-                    log("[검색] 다음 페이지 없음")
+                    log("[사람] 다음 검색 결과 페이지가 없어 여기서 멈춥니다.")
                     break
                 continue
             break
@@ -3387,8 +3416,9 @@ async def _find_and_click_many_own_sites(
             except Exception:
                 is_ad = False
             log(
-                f"[검색] ★ 클릭 예약 ({len(clicked_keys)+1}/{max_clicks}) "
-                f"score={sc} ads={is_ad} url={real} title='{preview}'"
+                f"[사람] 이제 이 링크를 누릅니다"
+                f"{' (광고)' if is_ad else ''}: "
+                f"{preview or real[:40]}"
             )
             ev = await _click_serp_result(
                 page,
@@ -3481,8 +3511,8 @@ async def _find_and_click_many_own_sites(
                 except Exception:
                     pass
             log(
-                f"[SITE] 점검 완료 {len(clicked_keys)}/{max_clicks} "
-                f"url={page.url} cta={n}"
+                f"[사람] 사이트 안 둘러보기를 마쳤습니다. "
+                f"배너·버튼 클릭 {n}회, 검색 클릭 누적 {len(clicked_keys)}/{max_clicks}."
             )
 
             if len(clicked_keys) < max_clicks:
@@ -3515,8 +3545,9 @@ async def _find_and_click_many_own_sites(
                 break
 
     log(
-        f"[검색] 클릭 결과 요약 verified={verified_clicks} keys={len(clicked_keys)} "
-        f"evidence={len(click_evidence)} banner={banner_total}"
+        f"[사람] 이번 검색 정리: 실제로 들어간 횟수 {verified_clicks}번, "
+        f"사이트 안 배너·버튼 {banner_total}번. "
+        "(한꺼번에 서버를 때리는 방식이 아닙니다)"
     )
     return {
         "clicks": len(clicked_keys),
@@ -3577,95 +3608,206 @@ async def _browse_own_site(
     human: Dict[str, Any],
     log,
 ) -> int:
-    """Rich human-like session on own site. Returns successful banner clicks."""
+    """
+    사이트 안 행동: 사람처럼 둘러보기.
+    - 스크롤·멈춤·마우스 이동 시간이 매번 다름 (기계 패턴 방지)
+    - 배너/버튼 클릭 순서 섞기
+    - 디도스처럼 연속 요청을 퍼붓지 않음
+    """
     host = _normalize_domain(urlparse(page.url).netloc)
-    log(f"[사이트] 체류 시작 host={host} url={page.url}")
+    log(
+        f"[사람] 사이트에 들어와 잠시 둘러봅니다. "
+        f"주소는 {page.url[:80]}{'…' if len(page.url or '')>80 else ''} 입니다."
+    )
 
-    dwell_min = int(human.get("dwell_ms_min") or 4000)
-    dwell_max = int(human.get("dwell_ms_max") or 12000)
+    # 체류 시간을 넓게 랜덤 (고정 구간 고정 반복 금지)
+    dwell_min = int(human.get("dwell_ms_min") or 4500)
+    dwell_max = int(human.get("dwell_ms_max") or 14000)
+    # 세션마다 약간 흔들기
+    dwell_min = max(2000, dwell_min + random.randint(-800, 1200))
+    dwell_max = max(dwell_min + 1500, dwell_max + random.randint(-1500, 2500))
     do_scroll = bool(human.get("scroll", True))
     mouse_wander = bool(human.get("mouse_wander", True))
     read_pauses = bool(human.get("read_pauses", True))
-    scroll_min = int(human.get("scroll_steps_min") or 3)
-    scroll_max = int(human.get("scroll_steps_max") or 8)
-    up_chance = float(human.get("scroll_up_chance") or 0.25)
+    scroll_min = int(human.get("scroll_steps_min") or 2)
+    scroll_max = int(human.get("scroll_steps_max") or 9)
+    up_chance = float(human.get("scroll_up_chance") or 0.28)
 
-    # Arrive: short pause, look around
-    await _rand_delay(600, 1400)
-    if mouse_wander:
-        await _mouse_wander(page, moves=random.randint(2, 4))
+    # 도착 직후: 항상 같은 대기가 아니게
+    await _rand_delay(400, 2100)
+    if mouse_wander and random.random() < 0.85:
+        log("[사람] 화면을 눈으로 훑듯 마우스를 조금 움직입니다.")
+        await _mouse_wander(page, moves=random.randint(1, 5))
 
-    # First read + scroll down the page
-    if do_scroll:
-        steps = random.randint(scroll_min, max(scroll_min, scroll_max))
-        log(f"[사이트] 스크롤 탐색 steps={steps}")
-        await _human_scroll(page, steps=steps, allow_up=True, up_chance=up_chance)
-
-    if read_pauses:
-        log("[사이트] 읽는 것처럼 대기…")
-        await _human_idle(page, dwell_min, dwell_max)
-    else:
-        await _rand_delay(dwell_min, dwell_max)
-
-    # Mid-page micro behavior
-    if do_scroll and random.random() < 0.55:
-        await _human_scroll(page, steps=random.randint(1, 3), allow_up=True, up_chance=0.35)
-        if mouse_wander:
-            await _mouse_wander(page, moves=1)
+    # 행동 순서를 섞음: 스크롤 먼저 / 읽기 먼저 / 배너 먼저
+    phases = ["scroll_a", "read", "scroll_b", "banner", "scroll_c", "internal"]
+    random.shuffle(phases)
+    # 너무 짧지 않게 핵심 단계는 유지
+    if "read" not in phases[:4]:
+        phases.insert(random.randint(0, 2), "read")
+    if "banner" not in phases and banner_clicks:
+        phases.insert(random.randint(1, min(3, len(phases))), "banner")
 
     clicked_n = 0
-    if banner_clicks:
-        log(f"[사이트] 배너/버튼 클릭 {len(banner_clicks)}개 시도")
-        clicked_n = await _perform_clicks(
-            page, banner_clicks, log=log, label_prefix="배너"
-        )
-        log(f"[사이트] 배너/버튼 성공 {clicked_n}/{len(banner_clicks)}")
-        if do_scroll:
-            await _human_scroll(
-                page, steps=random.randint(1, 3), allow_up=True, up_chance=0.2
+    did_scroll = False
+
+    for phase in phases:
+        if phase == "scroll_a" or phase == "scroll_b" or phase == "scroll_c":
+            if not do_scroll or random.random() < 0.12:
+                continue
+            steps = random.randint(scroll_min, max(scroll_min, scroll_max))
+            log(
+                f"[사람] 페이지를 위아래로 천천히 살펴봅니다. "
+                f"(스크롤 약 {steps}번, 간격은 제각각)"
             )
-        await _rand_delay(max(800, dwell_min // 3), max(1600, dwell_max // 2))
-    else:
-        log("[사이트] 설정된 배너 없음 — 탐색만 수행")
-        if do_scroll:
-            await _human_scroll(page, steps=random.randint(1, 3), allow_up=True)
-        await _rand_delay(900, 2200)
+            await _human_scroll(
+                page,
+                steps=steps,
+                allow_up=True,
+                up_chance=up_chance + random.uniform(-0.08, 0.12),
+            )
+            did_scroll = True
+            if mouse_wander and random.random() < 0.5:
+                await _mouse_wander(page, moves=random.randint(1, 3))
 
-    # Optional soft internal exploration (same domain only)
-    if human.get("random_internal_click"):
-        try:
-            domain = host
-            links = page.locator("a[href]")
-            n = min(await links.count(), 30)
-            candidates = []
-            for i in range(n):
-                a = links.nth(i)
-                try:
-                    if not await a.is_visible(timeout=200):
-                        continue
-                    href = await a.get_attribute("href") or ""
-                    real = _extract_real_url(href)
-                    if real and _host_matches_domain(urlparse(real).netloc, domain):
-                        # skip anchors / logout
-                        if any(x in real.lower() for x in ("logout", "signout", "login")):
+        elif phase == "read":
+            if read_pauses:
+                sec = random.randint(dwell_min, dwell_max) / 1000.0
+                log(
+                    f"[사람] 글을 읽는 것처럼 약 {sec:.1f}초 머뭅니다. "
+                    "(서버를 두드리는 행동이 아닙니다)"
+                )
+                await _human_idle(page, dwell_min, dwell_max)
+            else:
+                await _rand_delay(dwell_min, dwell_max)
+
+        elif phase == "banner":
+            if not banner_clicks:
+                # 설정 배너 없어도 화면에 보이는 버튼/링크를 가끔 눌러 봄
+                if random.random() < 0.55:
+                    n_auto = await _soft_click_visible_cta(page, log=log)
+                    clicked_n += n_auto
+                continue
+            # 배너 목록 순서 섞기
+            banners = list(banner_clicks)
+            random.shuffle(banners)
+            # 전부 안 누르고 일부만 (사람처럼)
+            take = max(1, min(len(banners), random.randint(1, len(banners))))
+            subset = banners[:take]
+            log(
+                f"[사람] 화면 안 배너·버튼 글자를 찾아 "
+                f"{take}개 정도 눌러 봅니다. (한꺼번에 퍼붓지 않음)"
+            )
+            for bi, bcfg in enumerate(subset):
+                if bi > 0:
+                    await _rand_delay(900, 2800)
+                one = await _perform_clicks(
+                    page, [bcfg], log=log, label_prefix="배너·버튼"
+                )
+                clicked_n += int(one or 0)
+                if do_scroll and random.random() < 0.45:
+                    await _human_scroll(
+                        page, steps=random.randint(1, 2), allow_up=True, up_chance=0.3
+                    )
+            if clicked_n:
+                log(f"[사람] 배너·버튼을 {clicked_n}번 눌렀습니다.")
+            else:
+                log("[사람] 이번에는 맞는 배너·버튼을 못 찾아 넘어갑니다.")
+
+        elif phase == "internal":
+            # 기본 ON에 가깝게: human 플래그 없거나 True면 가끔 내부 링크
+            allow_internal = human.get("random_internal_click", True)
+            if not allow_internal or random.random() < 0.35:
+                continue
+            try:
+                domain = host
+                links = page.locator("a[href]")
+                n = min(await links.count(), 40)
+                candidates = []
+                for i in range(n):
+                    a = links.nth(i)
+                    try:
+                        if not await a.is_visible(timeout=180):
                             continue
-                        candidates.append((a, real))
-                except Exception:
-                    continue
-            if candidates:
-                a, real = random.choice(candidates[:8])
-                log(f"[사이트] 내부 링크 탐색 클릭: {real}")
-                await _human_move_near(page, a)
-                await a.click(timeout=10000)
-                await page.wait_for_load_state("domcontentloaded", timeout=60000)
-                await _rand_delay(1200, 2800)
-                if do_scroll:
-                    await _human_scroll(page, steps=random.randint(1, 3))
-        except Exception as exc:
-            log(f"[사이트] 내부 클릭 건너뜀: {exc}")
+                        href = await a.get_attribute("href") or ""
+                        real = _extract_real_url(href)
+                        if real and _host_matches_domain(urlparse(real).netloc, domain):
+                            low = real.lower()
+                            if any(
+                                x in low
+                                for x in (
+                                    "logout",
+                                    "signout",
+                                    "login",
+                                    "javascript:",
+                                    "#",
+                                )
+                            ):
+                                continue
+                            candidates.append((a, real))
+                    except Exception:
+                        continue
+                if candidates:
+                    a, real = random.choice(candidates[:12])
+                    log(
+                        f"[사람] 같은 사이트 안 다른 글(메뉴)로 한 번 더 들어가 봅니다. "
+                        f"{real[:70]}{'…' if len(real)>70 else ''}"
+                    )
+                    await _human_move_near(page, a)
+                    await _rand_delay(200, 900)
+                    await a.click(timeout=10000)
+                    await page.wait_for_load_state("domcontentloaded", timeout=60000)
+                    await _rand_delay(1000, 3200)
+                    if do_scroll:
+                        await _human_scroll(
+                            page, steps=random.randint(1, 4), allow_up=True
+                        )
+                    clicked_n += 1
+            except Exception as exc:
+                log(f"[사람] 안쪽 링크는 건너뜁니다. ({exc})")
 
-    log(f"[사이트] 체류 종료  최종={page.url}")
+    if not did_scroll and do_scroll:
+        await _human_scroll(page, steps=random.randint(2, 5), allow_up=True)
+
+    # 나갈 때 한 번 더 짧게 머무름
+    await _rand_delay(600, 2000)
+    log(
+        f"[사람] 이 사이트 둘러보기를 마칩니다. "
+        f"마지막 화면: {(page.url or '')[:80]}"
+    )
     return clicked_n
+
+
+async def _soft_click_visible_cta(page: Page, *, log) -> int:
+    """설정 없이도 보이는 가입/시작/메뉴 비슷한 글자 버튼을 가끔 누름."""
+    words = [
+        "가입",
+        "시작",
+        "입금",
+        "메뉴",
+        "더보기",
+        "자세히",
+        "이벤트",
+        "쿠폰",
+        "play",
+        "start",
+        "join",
+        "bonus",
+    ]
+    random.shuffle(words)
+    for w in words[: random.randint(2, 5)]:
+        try:
+            loc = page.get_by_text(w, exact=False).first
+            if await loc.is_visible(timeout=400):
+                log(f"[사람] 화면에 보이는「{w}」글자를 눌러 봅니다.")
+                await _human_move_near(page, loc)
+                await _rand_delay(150, 600)
+                await loc.click(timeout=5000)
+                await _rand_delay(800, 2200)
+                return 1
+        except Exception:
+            continue
+    return 0
 
 
 async def _return_to_serp(

@@ -186,9 +186,9 @@ def default_config() -> Dict[str, Any]:
                 "scroll_steps_min": 3,
                 "scroll_steps_max": 8,
                 "scroll_up_chance": 0.25,
-                "random_internal_click": False,
+                "random_internal_click": True,
                 "serp_scroll_min": 2,
-                "serp_scroll_max": 5,
+                "serp_scroll_max": 6,
             },
             "banner_clicks": [
                 {

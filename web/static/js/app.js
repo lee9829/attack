@@ -304,14 +304,17 @@
 
   function classifyLog(msg) {
     const m = String(msg || "");
-    if (/\[EVD|클릭증거|실제클릭|click_verified|YES·실제|NO·클릭/i.test(m)) return "click";
-    if (/PROFILE|프로필|uuid|Cloud 검색|프록시 주입/i.test(m)) return "profile";
-    if (/PROXY|프록시|출구 IP|출구IP|connection_data|proxy=/i.test(m)) return "proxy";
-    if (/SEARCH|검색|keyword|SERP/i.test(m)) return "search";
-    if (/클릭|click|matched|방문|CTA|banner|site_click|도착 확정/i.test(m)) return "click";
+    if (/\[이야기\]|\[사람\]|둘러보|배너|스크롤|머뭅/i.test(m)) return "click";
+    if (/\[확인\]|\[EVD|실제로 들어|클릭 성공|클릭 미확인|click_verified/i.test(m))
+      return "click";
+    if (/PROFILE|프로필|uuid|Cloud 검색|프록시 주입|\[프로필\]/i.test(m)) return "profile";
+    if (/PROXY|프록시|출구 IP|출구IP|connection_data|proxy=|\[접속\]/i.test(m))
+      return "proxy";
+    if (/SEARCH|검색|keyword|SERP|\[검색\]/i.test(m)) return "search";
+    if (/클릭|click|matched|방문|CTA|banner|site_click|도착/i.test(m)) return "click";
     if (/Google|구글|로그인|2FA|TOTP|otp/i.test(m)) return "google";
-    if (/ERR|오류|실패|Error/i.test(m)) return "err";
-    if (/OK|성공|완료/i.test(m)) return "ok";
+    if (/ERR|오류|실패|Error|\[문제\]/i.test(m)) return "err";
+    if (/OK|성공|완료|\[성공\]/i.test(m)) return "ok";
     return "other";
   }
 

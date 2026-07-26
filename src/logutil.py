@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""한글 상세 로그 — 프로필·프록시·출구IP·검색어·클릭 대상을 관리자가 읽기 쉽게."""
+"""자연어 한글 로그 — 비개발자도 바로 이해되게 (코드식 키=값 최소화)."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -8,23 +8,24 @@ from typing import Any, Callable, Dict, Optional
 
 LogFn = Callable[[str], None]
 
-# English tags kept for color coding in GUI, messages are Korean
+# 짧은 한글 배지 (색 구분용 태그 유지)
 TAG_KO = {
     "INFO": "안내",
     "OK": "성공",
-    "WARN": "경고",
-    "ERR": "오류",
-    "STEP": "단계",
+    "WARN": "주의",
+    "ERR": "문제",
+    "STEP": "진행",
     "CLICK": "클릭",
     "SEARCH": "검색",
     "SITE": "사이트",
-    "PROXY": "프록시",
+    "PROXY": "접속",
     "PROFILE": "프로필",
     "SUM": "요약",
-    "TRAFFIC": "트래픽",
+    "TRAFFIC": "통신",
     "MATCH": "매칭",
-    "EVD": "증거",
-    "AUDIT": "감사",
+    "EVD": "확인",
+    "AUDIT": "기록",
+    "STORY": "이야기",
 }
 
 
@@ -32,9 +33,17 @@ def ts() -> str:
     return datetime.now().strftime("%H:%M:%S")
 
 
+def _short_url(url: str, n: int = 72) -> str:
+    u = (url or "").strip()
+    if len(u) <= n:
+        return u or "(주소 없음)"
+    return u[: n - 1] + "…"
+
+
 class JobLog:
     """
-    모든 로그 줄에 시각 + 작업 맥락(작업번호/프로필/프록시/출구IP)을 붙입니다.
+    자연어 로그.
+    예: [17:06:49] [클릭] 프로필 g-xxx · IP 1.2.3.4 — 검색 결과 링크를 눌렀습니다.
     """
 
     def __init__(
@@ -49,13 +58,14 @@ class JobLog:
     ):
         self._base = base_log or (lambda m: print(m, flush=True))
         self.job_index = job_index
-        self.profile = profile or "-"
-        self.proxy = proxy or "-"
-        self.proxy_ip = proxy_ip or "미확인"
-        self.email = email or "-"
+        self.profile = profile or ""
+        self.proxy = proxy or ""
+        self.proxy_ip = proxy_ip or ""
+        self.email = email or ""
         self.keyword = ""
         self.matched_url = ""
         self.step = 0
+        self.natural = True  # 자연어 모드
 
     def set_proxy_ip(self, ip: str) -> None:
         if ip:
@@ -67,212 +77,227 @@ class JobLog:
     def set_matched_url(self, url: str) -> None:
         self.matched_url = url or ""
 
-    def ctx(self) -> str:
-        """관리자용 한글 맥락 한 줄."""
-        parts = [f"작업{self.job_index or '-'}"]
-        if self.profile and self.profile != "-":
-            parts.append(f"프로필={self.profile}")
-        if self.email and self.email != "-":
-            parts.append(f"계정={self.email}")
-        if self.proxy and self.proxy != "-":
+    def who(self) -> str:
+        """사람 읽기용 주어(누가)."""
+        bits = []
+        if self.job_index:
+            bits.append(f"{self.job_index}번 작업")
+        if self.profile:
+            bits.append(f"프로필「{self.profile}」")
+        if self.email:
+            bits.append(f"계정 {self.email}")
+        if self.proxy_ip and self.proxy_ip not in ("미확인", "-", ""):
+            bits.append(f"접속 IP {self.proxy_ip}")
+        elif self.proxy and self.proxy != "-":
             p = self.proxy
-            if len(p) > 48:
-                p = p[:46] + "…"
-            parts.append(f"프록시={p}")
-        ip = self.proxy_ip or "미확인"
-        parts.append(f"출구IP={ip}")
-        if self.keyword:
-            parts.append(f"검색어='{self.keyword}'")
-        return " · ".join(parts)
+            if len(p) > 36:
+                p = p[:34] + "…"
+            bits.append(f"프록시 {p}")
+        return " · ".join(bits) if bits else "작업"
+
+    def ctx(self) -> str:
+        return self.who()
 
     def _emit(self, tag: str, msg: str) -> None:
         ko = TAG_KO.get(tag, tag)
-        # Keep [TAG] for GUI color + Korean label for admins
-        line = f"[{ts()}] [{tag}/{ko}] [{self.ctx()}] {msg}"
+        # 자연어: [시각] [한글배지] 누가 — 무엇을
+        line = f"[{ts()}] [{ko}] {msg}"
         try:
             self._base(line)
         except Exception:
             print(line, flush=True)
 
+    def story(self, msg: str) -> None:
+        """이야기체 한 줄 (비개발자용 본문)."""
+        who = self.who()
+        text = (msg or "").strip()
+        if who and who != "작업":
+            self._emit("STORY", f"{who} — {text}")
+        else:
+            self._emit("STORY", text)
+
     def info(self, msg: str) -> None:
-        self._emit("INFO", msg)
+        self._emit("INFO", msg if not self.natural else self._soft(msg))
 
     def ok(self, msg: str) -> None:
-        self._emit("OK", msg)
+        self._emit("OK", msg if not self.natural else self._soft(msg))
 
     def warn(self, msg: str) -> None:
-        self._emit("WARN", msg)
+        self._emit("WARN", msg if not self.natural else self._soft(msg))
 
     def err(self, msg: str) -> None:
-        self._emit("ERR", msg)
+        self._emit("ERR", msg if not self.natural else self._soft(msg))
+
+    def _soft(self, msg: str) -> str:
+        """기술 접두어를 부드럽게."""
+        m = (msg or "").strip()
+        for pref in (
+            "[검색] ",
+            "[SEARCH] ",
+            "[사이트] ",
+            "[SITE] ",
+            "[CLICK] ",
+            "[프록시] ",
+            "[PROXY] ",
+            "[PROFILE] ",
+            "[프로필] ",
+            "[Google] ",
+            "[TRAFFIC] ",
+            "[OPS] ",
+            "[흐름] ",
+            "[2FA] ",
+            "[쿠키] ",
+            "[브라우저] ",
+            "[Agent] ",
+        ):
+            if m.startswith(pref):
+                m = m[len(pref) :]
+                break
+        return m
 
     def step_log(self, title: str, msg: str = "") -> None:
         self.step += 1
-        body = f"단계 {self.step} · {title}"
         if msg:
-            body += f" — {msg}"
-        self._emit("STEP", body)
+            self.story(f"{self.step}단계. {title}. {msg}")
+        else:
+            self.story(f"{self.step}단계. {title}.")
 
     def click(self, msg: str) -> None:
-        self._emit("CLICK", msg)
+        self._emit("CLICK", self._soft(msg))
 
     def evidence(self, msg: str) -> None:
-        """실제 클릭·도착 여부를 감사 추적용으로 남김."""
         self._emit("EVD", msg)
 
     def audit(self, msg: str) -> None:
-        self._emit("AUDIT", msg)
+        self._emit("AUDIT", self._soft(msg))
 
     def click_evidence(self, data: Dict[str, Any]) -> None:
-        """
-        섬세한 클릭 증거 1건.
-        필수 느낌 키: clicked, profile, ip, keyword, matched_url, final_url
-        """
+        """클릭 결과를 문장으로 설명."""
         clicked = bool(data.get("clicked") or data.get("ok"))
-        mark = "YES·실제클릭확정" if clicked else "NO·클릭실패/미도착"
-        lines = [
-            f"════ 클릭증거 {mark} ════",
-            f"  작업={data.get('job') or self.job_index} · 프로필={data.get('profile') or self.profile}",
-            f"  계정={data.get('email') or self.email} · 출구IP={data.get('ip') or self.proxy_ip}",
-            f"  프록시={data.get('proxy') or self.proxy}",
-            f"  검색어='{data.get('keyword') or self.keyword or '-'}'",
-            f"  클릭대상URL={data.get('matched_url') or data.get('target_url') or '-'}",
-            f"  도착최종URL={data.get('final_url') or data.get('landed_url') or '-'}",
-            f"  호스트검증={data.get('host_ok')} · 광고여부={data.get('is_ad')} · 방법={data.get('method') or '-'}",
-            f"  SERP={data.get('serp_url') or '-'} · 시각={data.get('ts') or ts()}",
-        ]
-        if data.get("error"):
-            lines.append(f"  오류={data.get('error')}")
-        for ln in lines:
-            self._emit("EVD", ln)
+        prof = data.get("profile") or self.profile or "알 수 없는 프로필"
+        ip = data.get("ip") or self.proxy_ip or "아직 모름"
+        email = data.get("email") or self.email or "-"
+        kw = data.get("keyword") or self.keyword or "(검색어 없음)"
+        target = data.get("matched_url") or data.get("target_url") or ""
+        final = data.get("final_url") or data.get("landed_url") or target
+        is_ad = data.get("is_ad")
+        ad_txt = "구글 광고(스폰서)" if is_ad else "일반 검색 결과"
+        method = str(data.get("method") or "")
+        how = (
+            "링크를 직접 눌러"
+            if method == "element_click"
+            else "주소로 이동해"
+            if method == "goto_fallback"
+            else "방식으로"
+        )
+        job = data.get("job") or self.job_index or "-"
+
         if clicked:
-            self.set_matched_url(str(data.get("final_url") or data.get("matched_url") or ""))
-            self._emit(
-                "OK",
-                f"★ 실제 클릭·도착 확인 · 프로필={data.get('profile') or self.profile} · "
-                f"IP={data.get('ip') or self.proxy_ip} · URL={data.get('final_url') or data.get('matched_url')}",
+            self.story(
+                f"실제로 들어갔습니다. "
+                f"{job}번 · 프로필「{prof}」· 계정 {email} · 접속 IP {ip} 이(가) "
+                f"검색어「{kw}」로 나온 {ad_txt}를 {how} 열었습니다."
             )
+            self.story(f"누른 주소: {_short_url(str(target), 90)}")
+            self.story(f"도착한 화면 주소: {_short_url(str(final), 90)}")
+            self.ok(
+                f"클릭 성공 확인 — 프로필「{prof}」, IP {ip}, 도착 {_short_url(str(final), 60)}"
+            )
+            self.set_matched_url(str(final or target))
         else:
-            self._emit(
-                "WARN",
-                f"★ 클릭 미확정 · 프로필={data.get('profile') or self.profile} · "
-                f"IP={data.get('ip') or self.proxy_ip}",
+            err = data.get("error") or "페이지에 제대로 도착하지 못했습니다"
+            self.story(
+                f"클릭이 확인되지 않았습니다. "
+                f"프로필「{prof}」· IP {ip} · 검색어「{kw}」. 이유: {err}"
             )
+            self.warn(f"클릭 미확인 — 프로필「{prof}」, IP {ip}")
 
     def search(self, msg: str) -> None:
-        self._emit("SEARCH", msg)
+        self._emit("SEARCH", self._soft(msg))
 
     def site(self, msg: str) -> None:
-        self._emit("SITE", msg)
+        self._emit("SITE", self._soft(msg))
 
     def proxy_log(self, msg: str) -> None:
-        self._emit("PROXY", msg)
+        self._emit("PROXY", self._soft(msg))
 
     def profile_log(self, msg: str) -> None:
-        self._emit("PROFILE", msg)
+        self._emit("PROFILE", self._soft(msg))
 
     def sep(self, title: str = "") -> None:
-        bar = "─" * 40
         if title:
-            self._base(f"[{ts()}] {bar} {title} {bar}")
+            self._base(f"[{ts()}] ── {title} ──")
         else:
-            self._base(f"[{ts()}] {bar}")
+            self._base(f"[{ts()}] ────────")
 
     def traffic(self, msg: str) -> None:
-        self._emit("INFO", f"[TRAFFIC] {msg}")
+        self._emit("INFO", self._soft(msg))
 
     def summary(self, data: Dict[str, Any]) -> None:
-        self.sep("작업 요약 (관리자용)")
-        labels = {
-            "job": "작업번호",
-            "profile": "옥토 프로필",
-            "uuid": "프로필 UUID",
-            "profile_os": "프로필 OS/핑거프린트",
-            "mobile_fp": "모바일 핑거프린트",
-            "proxy": "프록시",
-            "proxy_ip": "출구 IP (클릭에 사용된 IP)",
-            "api_ip": "Local API 보고 IP",
-            "ip_match": "프로필·IP 매칭",
-            "ip_match_score": "매칭 점수",
-            "email": "Google 계정",
-            "keyword": "검색어",
-            "matched_url": "클릭한 사이트 URL",
-            "final_url": "도착 최종 URL",
-            "click_verified": "실제 클릭·도착 검증",
-            "click_method": "클릭 방법",
-            "is_ad": "광고(스폰서) 클릭",
-            "search_ok": "검색·클릭 성공",
-            "visits": "사이트 방문 횟수",
-            "banner_clicks": "CTA/배너 클릭 수",
-            "google_ok": "Google 로그인 성공",
-            "traffic_total_requests": "실제 네트워크 요청 총수",
-            "traffic_target_requests": "자사 도메인 요청 수",
-            "traffic_google_requests": "Google 계열 요청 수",
-            "traffic_bytes": "수신 바이트(대략)",
-            "traffic_clicks": "클릭 이벤트 수",
-            "traffic_avg_req_per_click": "클릭당 평균 요청 수",
-            "google_login_requests": "Google 로그인 구간 요청 수",
-            "ok": "전체 성공 여부",
-            "error": "오류",
-            "dry_run": "DRY RUN",
-        }
-        for k, v in data.items():
-            if k in ("traffic_detail", "click_slices", "ip_match_detail", "click_evidence", "evidence"):
-                continue
-            label = labels.get(k, k)
-            self._emit("SUM", f"{label} = {v}")
-        # always restate click+IP clearly for operators
-        cv = data.get("click_verified")
-        self._emit(
-            "SUM",
-            f"※ 실제클릭검증={cv} · 출구IP={data.get('proxy_ip') or self.proxy_ip} · "
-            f"프로필={data.get('profile') or self.profile} · "
-            f"URL={data.get('final_url') or data.get('matched_url') or '-'}",
-        )
-        self._emit(
-            "SUM",
-            f"※ 이 작업에서 클릭/접속에 쓰인 출구 IP = {data.get('proxy_ip') or self.proxy_ip}",
-        )
-        # traffic one-liner for operators
-        tr = data.get("traffic_total_requests")
-        if tr is not None:
-            self._emit(
-                "SUM",
-                f"※ 실제 트래픽: 총요청={tr} · 자사={data.get('traffic_target_requests', '-')} · "
-                f"Google={data.get('traffic_google_requests', '-')} · "
-                f"클릭당평균={data.get('traffic_avg_req_per_click', '-')} · "
-                f"수신={data.get('traffic_bytes', '-')}",
+        self.sep("한 줄 요약 (누구나 읽기)")
+        prof = data.get("profile") or self.profile or "-"
+        ip = data.get("proxy_ip") or self.proxy_ip or "미확인"
+        email = data.get("email") or self.email or "-"
+        kw = data.get("keyword") or self.keyword or "-"
+        final = data.get("final_url") or data.get("matched_url") or "-"
+        clicked = data.get("click_verified")
+        g_ok = data.get("google_ok")
+        banners = data.get("banner_clicks") or 0
+        ad = data.get("is_ad")
+
+        self.story(f"이번 작업 주인공: 프로필「{prof}」, 계정 {email}, 접속 IP {ip}")
+        if g_ok is True:
+            self.story("구글 로그인은 되었습니다.")
+        elif g_ok is False:
+            self.story("구글 로그인은 되지 않았거나 확인되지 않았습니다.")
+        self.story(f"검색에 쓴 말: 「{kw}」")
+        if clicked:
+            kind = "광고 결과" if ad else "검색 결과"
+            self.story(
+                f"그 뒤 {kind}를 눌러 사이트로 들어갔고, 도착 주소는 {_short_url(str(final), 80)} 입니다."
             )
-        im = data.get("ip_match")
-        if im:
-            self._emit(
-                "SUM",
-                f"※ 프로필↔모바일/IP 매칭 = {im} (score={data.get('ip_match_score', '-')})",
-            )
+        else:
+            self.story("검색 결과 클릭·도착은 이번에 확인되지 않았습니다.")
+        try:
+            bn = int(banners or 0)
+        except Exception:
+            bn = 0
+        if bn > 0:
+            self.story(f"사이트 안에서 배너·버튼 같은 것을 {bn}번 눌러 보았습니다.")
+        self.story(
+            "참고: 이 작업은 한꺼번에 서버를 두드리는 방식이 아니라, "
+            "사람처럼 검색하고 링크를 누르고 스크롤하며 둘러보는 방식입니다."
+        )
+        if data.get("error") and data.get("error") not in ("-", "", None):
+            self.warn(f"남긴 문제 메시지: {data.get('error')}")
         self.sep()
 
     def __call__(self, msg: str) -> None:
-        """Drop-in replacement for plain log(str)."""
+        """Drop-in for plain log(str) — 태그 보고 분류 후 자연어화."""
         m = msg or ""
+        soft = self._soft(m)
         upper = m.upper()
-        if m.startswith("[검색]") or m.startswith("[SEARCH]") or "SEARCH" in upper[:24]:
-            self.search(m)
-        elif m.startswith("[사이트]") or m.startswith("[사이트 ") or m.startswith("[SITE]"):
-            self.site(m)
+        # story-style paths from automation
+        if m.startswith("[사람]") or m.startswith("[이야기]"):
+            self.story(self._soft(m.replace("[사람]", "").replace("[이야기]", "").strip()))
+        elif m.startswith("[검색]") or m.startswith("[SEARCH]") or "SEARCH" in upper[:24]:
+            self.search(soft)
+        elif m.startswith("[사이트]") or m.startswith("[SITE]"):
+            self.site(soft)
         elif "클릭" in m or m.startswith("[CLICK]") or "[CLICK]" in upper:
-            self.click(m)
+            self.click(soft)
         elif m.startswith("[Profile]") or m.startswith("[PROFILE]") or m.startswith("[프로필]"):
-            self.profile_log(m)
+            self.profile_log(soft)
         elif (
             m.startswith("[Proxy]")
             or m.startswith("[PROXY]")
             or m.startswith("[Local]")
             or m.startswith("[프록시]")
         ):
-            self.proxy_log(m)
+            self.proxy_log(soft)
         elif "오류" in m or "실패" in m or m.startswith("[ERR]"):
-            self.err(m)
+            self.err(soft)
         elif "성공" in m or m.startswith("[OK]"):
-            self.ok(m)
+            self.ok(soft)
         else:
-            self.info(m)
+            self.info(soft)
