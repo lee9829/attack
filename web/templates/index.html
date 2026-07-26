@@ -48,7 +48,7 @@
           <button type="button" class="btn ghost" id="btnSave">저장</button>
           <button type="button" class="btn ghost" id="btnTest">연결</button>
           <button type="button" class="btn danger btn-lg" id="btnStop" disabled>■ STOP</button>
-          <button type="button" class="btn primary btn-lg" id="btnStart">▶ START</button>
+          <button type="button" class="btn primary btn-lg" id="btnStart">⚔ START</button>
         </div>
       </header>
 
@@ -86,11 +86,66 @@
             <div>
               <strong>PC 통합 에이전트 받기</strong>
               <p class="hint" style="margin:0.2rem 0 0">
-                다운로드 → 더블클릭 실행 → 「연결됨」 확인. (약 <span id="agentDlMb">{{ agent_download_mb or '?' }}</span> MB)
+                다운로드 → 더블클릭 → 「연결됨」. (약 <span id="agentDlMb">{{ agent_download_mb or '?' }}</span> MB)
                 {% if not agent_download_ready %}<span class="warn-inline"> · 서버 파일 준비 중일 수 있음</span>{% endif %}
               </p>
+              <p class="hint smartscreen-hint">
+                <b>의심 파일 경고?</b> Windows 정상 반응입니다.
+                ① 추가 정보 → <b>그래도 실행</b>
+                ② 또는 다운로드 후 PowerShell:
+                <code>Unblock-File .\OctoAgent.exe</code>
+              </p>
             </div>
-            <a class="btn primary btn-lg" id="btnDlAgent" href="/download/OctoAgent.exe">⬇ OctoAgent.exe 다운로드</a>
+            <div class="row gap wrap">
+              <a class="btn primary btn-lg" id="btnDlAgent" href="/download/OctoAgent.exe">⬇ OctoAgent.exe</a>
+              <a class="btn ghost sm" href="/download/unblock-agent.bat">실행허용 bat</a>
+            </div>
+          </div>
+
+          <div class="card raid-setup">
+            <div class="mission-head">
+              <h2 style="margin:0">게임형 작전 세팅 (레이드 모드)</h2>
+              <span class="hint">난이도 고르고 START — Octo 프로필 API 활용</span>
+            </div>
+            <div class="raid-modes" id="raidModes">
+              <button type="button" class="raid-mode" data-raid="scout">
+                <b>정찰 SCOUT</b>
+                <span>동시 5 · 1클릭 · 광고ON · 반복1</span>
+              </button>
+              <button type="button" class="raid-mode active" data-raid="raid">
+                <b>레이드 RAID</b>
+                <span>동시 15 · 1클릭 · 검색다양 · 광고ON</span>
+              </button>
+              <button type="button" class="raid-mode" data-raid="siege">
+                <b>공성 SIEGE</b>
+                <span>동시 50 · 웨이브 · 1클릭 · 풀프로필</span>
+              </button>
+            </div>
+            <div class="grid-2" style="margin-top:0.75rem">
+              <div>
+                <label class="check"><input type="checkbox" id="oneTimeProfiles" /> 일회성(One-time) 프로필 — 끝나면 삭제</label>
+                <label class="check"><input type="checkbox" id="uniqueTitle" checked /> 프로필명 자동 접미사 (j1,j2…) 다양화</label>
+                <label class="check"><input type="checkbox" id="startOnGoogle" checked /> 시작페이지 Google</label>
+                <label class="check"><input type="checkbox" id="forceStopStale" checked /> 시작 전 잔여 프로필 force stop</label>
+              </div>
+              <div>
+                <label class="field">
+                  <span>프로필 태그 (쉼표 · Cloud API)</span>
+                  <input type="text" id="profileTagsHome" value="mobile,auto,raid" placeholder="mobile,auto,raid" />
+                </label>
+                <label class="field">
+                  <span>핑거프린트 OS</span>
+                  <select id="profileOsHome">
+                    <option value="android" selected>android (모바일)</option>
+                    <option value="win">win</option>
+                    <option value="mac">mac</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <p class="hint" style="margin-top:0.5rem">
+              Octo Cloud: 프로필 생성·프록시 주입·태그 · Local: 프로필 Start/Stop · 웹: 레이드 지휘
+            </p>
           </div>
           <ol class="mission-steps">
             <li><b>Octo Browser</b> 실행 + 로그인 (Local API 켜짐)</li>
@@ -149,7 +204,7 @@
             </p>
           </div>
           <div class="control-right">
-            <button type="button" class="btn primary btn-start-xl" id="btnStartHome">▶ START 작전</button>
+            <button type="button" class="btn primary btn-start-xl" id="btnStartHome">⚔ START 레이드</button>
             <button type="button" class="btn danger btn-stop-xl" id="btnStopHome" disabled>■ STOP</button>
             <div class="live-mini">
               <div><span class="muted">현재</span><div id="liveStep">—</div></div>
@@ -814,6 +869,9 @@ user_id=123'></textarea>
           <label class="check"><input type="checkbox" id="mobileFingerprint" checked /> 모바일(Android) 핑거프린트 강제</label>
           <label class="check"><input type="checkbox" id="matchMobileIp" checked /> 프로필↔출구 IP 매칭 로그</label>
           <label class="check"><input type="checkbox" id="trafficMetrics" checked /> 실제 트래픽·클릭당 요청 수 로그</label>
+          <label class="check"><input type="checkbox" id="oneTimeProfilesSet" /> 일회성 프로필 (one-time Local API)</label>
+          <label class="check"><input type="checkbox" id="uniqueTitleSet" checked /> 프로필 제목 접미사 다양화</label>
+          <p class="hint">홈 레이드 세팅과 동기됩니다. Cloud 생성 + Local Start + 태그/프록시/핑거프린트 전부 사용.</p>
         </div>
       </section>
 

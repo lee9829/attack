@@ -466,26 +466,50 @@
         json: $("#cookiesText").value,
       },
       octo: {
-        profile_os: $("#profileOs")?.value || "android",
+        profile_os:
+          $("#profileOsHome")?.value || $("#profileOs")?.value || "android",
         mobile_fingerprint: $("#mobileFingerprint")
           ? $("#mobileFingerprint").checked
           : true,
         os_version: $("#osVersion")?.value?.trim() || "14",
         device: $("#deviceModel")?.value?.trim() || "",
-        tags: ($("#profileTags")?.value || "mobile,auto")
+        tags: (
+          $("#profileTagsHome")?.value ||
+          $("#profileTags")?.value ||
+          "mobile,auto,raid"
+        )
           .split(/[,\n]/)
           .map((s) => s.trim())
           .filter(Boolean),
         match_mobile_ip: $("#matchMobileIp") ? $("#matchMobileIp").checked : true,
         traffic_metrics: $("#trafficMetrics") ? $("#trafficMetrics").checked : true,
-        one_time_profiles: false,
+        one_time_profiles: $("#oneTimeProfiles")
+          ? $("#oneTimeProfiles").checked
+          : $("#oneTimeProfilesSet")
+            ? $("#oneTimeProfilesSet").checked
+            : false,
+        unique_title_suffix: $("#uniqueTitle")
+          ? $("#uniqueTitle").checked
+          : true,
+        start_on_google: $("#startOnGoogle")
+          ? $("#startOnGoogle").checked
+          : true,
+        start_pages: $("#startOnGoogle")?.checked
+          ? ["https://www.google.com/"]
+          : [],
+        raid_tag: "raid",
+        force_stop_stale: $("#forceStopStale")
+          ? $("#forceStopStale").checked
+          : true,
       },
-      profile_os: $("#profileOs")?.value || "android",
+      profile_os:
+        $("#profileOsHome")?.value || $("#profileOs")?.value || "android",
       mobile_fingerprint: $("#mobileFingerprint")
         ? $("#mobileFingerprint").checked
         : true,
       match_mobile_ip: $("#matchMobileIp") ? $("#matchMobileIp").checked : true,
       traffic_metrics: $("#trafficMetrics") ? $("#trafficMetrics").checked : true,
+      unique_title_suffix: $("#uniqueTitle") ? $("#uniqueTitle").checked : true,
       ops: {
         enabled: $("#opsEnabled") ? $("#opsEnabled").checked : false,
         mode: $("#opsMode")?.value || "browser",
@@ -727,10 +751,31 @@
     const targets = cfg.targets || [];
     $("#directUrl").value = targets[0]?.url || "";
 
-    $("#reuseProfiles").checked = cfg.reuse_existing_profiles !== false;
-    $("#createMissing").checked = cfg.create_profile_if_missing !== false;
-    $("#stopAfter").checked = cfg.stop_profile_after_job !== false;
-    $("#headless").checked = !!cfg.headless;
+    const oc = cfg.octo || {};
+    if ($("#profileOs")) $("#profileOs").value = oc.profile_os || cfg.profile_os || "android";
+    if ($("#profileOsHome"))
+      $("#profileOsHome").value = oc.profile_os || cfg.profile_os || "android";
+    if ($("#profileTags"))
+      $("#profileTags").value = (oc.tags || ["mobile", "auto"]).join(",");
+    if ($("#profileTagsHome"))
+      $("#profileTagsHome").value = (oc.tags || ["mobile", "auto", "raid"]).join(",");
+    if ($("#oneTimeProfiles"))
+      $("#oneTimeProfiles").checked = !!oc.one_time_profiles;
+    if ($("#oneTimeProfilesSet"))
+      $("#oneTimeProfilesSet").checked = !!oc.one_time_profiles;
+    if ($("#uniqueTitle"))
+      $("#uniqueTitle").checked = oc.unique_title_suffix !== false;
+    if ($("#uniqueTitleSet"))
+      $("#uniqueTitleSet").checked = oc.unique_title_suffix !== false;
+    if ($("#startOnGoogle"))
+      $("#startOnGoogle").checked = oc.start_on_google !== false;
+    if ($("#forceStopStale"))
+      $("#forceStopStale").checked = oc.force_stop_stale !== false;
+
+    if ($("#reuseProfiles")) $("#reuseProfiles").checked = cfg.reuse_existing_profiles !== false;
+    if ($("#createMissing")) $("#createMissing").checked = cfg.create_profile_if_missing !== false;
+    if ($("#stopAfter")) $("#stopAfter").checked = cfg.stop_profile_after_job !== false;
+    if ($("#headless")) $("#headless").checked = !!cfg.headless;
     $("#delayJobs").value = cfg.delay_between_jobs_sec ?? 15;
     $("#startTimeout").value = cfg.start_timeout_sec ?? 120;
     $("#maxJobs").value = cfg.max_jobs ?? 0;
@@ -1373,6 +1418,65 @@
     $("#btnClearEvidence")?.addEventListener("click", () => {
       evidenceState.rows = [];
       renderEvidenceBoard([]);
+    });
+
+    // game raid presets
+    const raidPresets = {
+      scout: {
+        par: 5,
+        loops: 1,
+        ads: false,
+        preferAds: true,
+        single: true,
+        rotate: true,
+        shuffle: true,
+      },
+      raid: {
+        par: 15,
+        loops: 1,
+        ads: false,
+        preferAds: true,
+        single: true,
+        rotate: true,
+        shuffle: true,
+      },
+      siege: {
+        par: 50,
+        loops: 1,
+        ads: false,
+        preferAds: true,
+        single: true,
+        rotate: true,
+        shuffle: true,
+      },
+    };
+    $$(".raid-mode").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        $$(".raid-mode").forEach((x) => x.classList.remove("active"));
+        btn.classList.add("active");
+        const p = raidPresets[btn.dataset.raid] || raidPresets.raid;
+        if ($("#parallelJobsHome")) $("#parallelJobsHome").value = p.par;
+        if ($("#parallelJobs")) $("#parallelJobs").value = p.par;
+        if ($("#macroLoops")) $("#macroLoops").value = p.loops;
+        if ($("#singleClick")) $("#singleClick").checked = p.single;
+        if ($("#kwRotate")) $("#kwRotate").checked = p.rotate;
+        if ($("#kwShuffle")) $("#kwShuffle").checked = p.shuffle;
+        if ($("#skipAds")) $("#skipAds").checked = p.ads;
+        if ($("#preferAds")) $("#preferAds").checked = p.preferAds;
+        if ($("#maxClicksHome")) $("#maxClicksHome").value = 1;
+        toast(
+          `레이드 모드: ${btn.dataset.raid?.toUpperCase()} · 동시 ${p.par} · 1클릭 · 광고추적`
+        );
+      })
+    );
+    // sync one-time checkboxes
+    $("#oneTimeProfiles")?.addEventListener("change", () => {
+      if ($("#oneTimeProfilesSet"))
+        $("#oneTimeProfilesSet").checked = $("#oneTimeProfiles").checked;
+    });
+    $("#oneTimeProfilesSet")?.addEventListener("change", () => {
+      if ($("#oneTimeProfiles"))
+        $("#oneTimeProfiles").checked = $("#oneTimeProfilesSet").checked;
     });
     // sync home ↔ detail skip ads
     $("#skipAds")?.addEventListener("change", () => {

@@ -693,21 +693,37 @@ class JobRunner:
             ),
         }
 
-    def prepare_profile(self, title: str, proxy: Proxy, jlog: JobLog) -> str:
+    def prepare_profile(
+        self,
+        title: str,
+        proxy: Proxy,
+        jlog: JobLog,
+        *,
+        job_index: int = 0,
+    ) -> str:
+        """Cloud 프로필 준비: 재사용 / 생성 / 태그 / 프록시 / 시작페이지."""
         jlog.step_log("프로필 준비", f"title={title}")
         opts = self._profile_options()
+        oc = dict(self.config.get("octo") or {})
+        # 다양화: 제목 접미사 (동일 계정 다창 충돌 방지)
+        title_use = (title or f"auto-{job_index or 1}").strip()[:80]
+        if bool(oc.get("unique_title_suffix") or self.config.get("unique_title_suffix")):
+            suffix = f"-j{job_index or 1}"
+            if not title_use.endswith(suffix):
+                title_use = (title_use[:70] + suffix)[:90]
         existing = None
-        if self.config.get("reuse_existing_profiles", True):
-            jlog.profile_log(f"Cloud 검색 중… title='{title}'")
-            existing = self.client.find_profile_by_title(title)
+        if self.config.get("reuse_existing_profiles", True) and not opts.get("use_one_time"):
+            jlog.profile_log(f"Cloud 검색 중… title='{title_use}'")
+            existing = self.client.find_profile_by_title(title_use)
+            if not existing and title_use != title:
+                existing = self.client.find_profile_by_title(title)
 
         if existing:
             uuid = str(existing["uuid"])
             jlog.profile_log(
-                f"기존 프로필 사용 title='{title}' uuid={uuid[:8]}… "
-                f"status={existing.get('status') or '-'}"
+                f"기존 프로필 사용 title='{existing.get('title') or title_use}' "
+                f"uuid={uuid[:8]}… status={existing.get('status') or '-'}"
             )
-            # Best-effort OS / mobile info
             try:
                 info = self.client.profile_os_info(uuid)
                 jlog.profile_log(
@@ -722,7 +738,6 @@ class JobRunner:
                 f"auth={'yes' if proxy.login else 'no'}"
             )
             self.client.update_profile_proxy(uuid, proxy)
-            # tag for mobile matching audit
             tags = list(opts.get("tags") or [])
             if opts.get("mobile") and "mobile" not in [str(t).lower() for t in tags]:
                 tags.append("mobile")
@@ -731,29 +746,44 @@ class JobRunner:
                     self.client.update_profile_tags(uuid, tags)
                 except Exception:
                     pass
+            # 시작 페이지 (구글 등)
+            start_pages = list(oc.get("start_pages") or self.config.get("start_pages") or [])
+            if start_pages:
+                try:
+                    self.client.update_profile_start_pages(uuid, [str(x) for x in start_pages[:10]])
+                    jlog.profile_log(f"start_pages={start_pages[:3]}")
+                except Exception as exc:
+                    jlog.warn(f"start_pages 스킵: {exc}")
             jlog.ok(f"프록시 주입 완료 → {proxy.display}")
             return uuid
 
         if not self.config.get("create_profile_if_missing", True):
-            raise OctoError(f"프로필이 없고 생성도 비활성화됨: {title}")
+            raise OctoError(f"프로필이 없고 생성도 비활성화됨: {title_use}")
 
         os_name = opts["os_name"]
         jlog.step_log(
             "새 프로필 생성 (Cloud POST)",
-            f"title={title} os={os_name} mobile={opts['mobile']} + proxy",
+            f"title={title_use} os={os_name} mobile={opts['mobile']} + proxy",
         )
         tags = list(opts.get("tags") or [])
         if opts.get("mobile") and "mobile" not in [str(t).lower() for t in tags]:
             tags.extend(["mobile", "auto"])
+        raid_tag = str(oc.get("raid_tag") or self.config.get("raid_tag") or "").strip()
+        if raid_tag and raid_tag not in tags:
+            tags.append(raid_tag)
         try:
             for tname in tags:
                 self.client.ensure_tag(str(tname))
         except Exception:
             pass
 
+        start_pages = list(oc.get("start_pages") or self.config.get("start_pages") or [])
+        if not start_pages and bool(oc.get("start_on_google", True)):
+            start_pages = ["https://www.google.com/"]
+
         if opts.get("mobile"):
             uuid = self.client.create_mobile_profile(
-                title=title,
+                title=title_use,
                 proxy=proxy,
                 os_version=str(opts.get("os_version") or "14"),
                 device=str(opts.get("device") or ""),
@@ -765,14 +795,20 @@ class JobRunner:
                 os_version=str(opts.get("os_version") or ""),
             )
             uuid = self.client.create_profile(
-                title=title,
+                title=title_use,
                 proxy=proxy,
                 os_name=os_name,
                 fingerprint=fp,
                 tags=tags,
+                start_pages=start_pages or None,
             )
+        if start_pages:
+            try:
+                self.client.update_profile_start_pages(uuid, [str(x) for x in start_pages[:10]])
+            except Exception:
+                pass
         jlog.ok(
-            f"프로필 생성 uuid={uuid[:8]}… os={os_name} proxy={proxy.display}"
+            f"프로필 생성 uuid={uuid[:8]}… os={os_name} tags={tags[:5]} proxy={proxy.display}"
         )
         return uuid
 
@@ -858,30 +894,51 @@ class JobRunner:
             )
             jlog.set_proxy_ip("미확인")
         else:
-            uuid = self.prepare_profile(account.profile_title, proxy, jlog)
-            self._check_cancel()
-
-            try:
-                for active in self.client.list_active_profiles():
-                    if str(active.get("uuid")) == uuid:
-                        jlog.warn("이미 실행 중인 프로필 → force stop 후 재시작")
-                        self.client.stop_profile(uuid, force=True)
-                        time.sleep(2)
-            except Exception as exc:
-                jlog.warn(f"active profiles: {exc}")
-
-            jlog.step_log(
-                "Local API 프로필 Start",
-                f"uuid={uuid[:8]}… headless={self.config.get('headless')} "
-                f"os={prof_opts.get('os_name')}",
-            )
-            start = self.client.start_profile(
-                uuid,
-                headless=bool(self.config.get("headless", False)),
-                timeout_sec=int(self.config.get("start_timeout_sec") or 120),
-            )
-            with self._uuid_lock:
-                self.started_uuids.append(uuid)
+            oc = dict(self.config.get("octo") or {})
+            use_ot = bool(prof_opts.get("use_one_time") or oc.get("one_time_profiles"))
+            if use_ot:
+                jlog.step_log(
+                    "One-time 프로필 Start (Local)",
+                    f"os={prof_opts.get('os_name')} title={account.profile_title}",
+                )
+                start_pages = list(oc.get("start_pages") or [])
+                if not start_pages and oc.get("start_on_google", True):
+                    start_pages = ["https://www.google.com/"]
+                start = self.client.start_one_time_profile(
+                    proxy=proxy,
+                    os_name=str(prof_opts.get("os_name") or "android"),
+                    headless=bool(self.config.get("headless", False)),
+                    timeout_sec=int(self.config.get("start_timeout_sec") or 120),
+                    start_pages=start_pages or None,
+                    title=(account.profile_title or f"ot-{job_index}")[:90],
+                )
+                uuid = str(start.get("uuid") or "")
+            else:
+                uuid = self.prepare_profile(
+                    account.profile_title, proxy, jlog, job_index=job_index
+                )
+                self._check_cancel()
+                try:
+                    for active in self.client.list_active_profiles():
+                        if str(active.get("uuid")) == uuid:
+                            jlog.warn("이미 실행 중인 프로필 → force stop 후 재시작")
+                            self.client.stop_profile(uuid, force=True)
+                            time.sleep(2)
+                except Exception as exc:
+                    jlog.warn(f"active profiles: {exc}")
+                jlog.step_log(
+                    "Local API 프로필 Start",
+                    f"uuid={uuid[:8]}… headless={self.config.get('headless')} "
+                    f"os={prof_opts.get('os_name')}",
+                )
+                start = self.client.start_profile(
+                    uuid,
+                    headless=bool(self.config.get("headless", False)),
+                    timeout_sec=int(self.config.get("start_timeout_sec") or 120),
+                )
+            if uuid:
+                with self._uuid_lock:
+                    self.started_uuids.append(uuid)
             ws = str(start.get("ws_endpoint") or "")
             debug_port = start.get("debug_port")
             geo = self.client.extract_connection_ip(start)
@@ -893,7 +950,7 @@ class JobRunner:
                 )
             jlog.set_proxy_ip(ip or "미확인")
             jlog.ok(
-                f"프로필 시작 완료 · 디버그포트={debug_port} · "
+                f"프로필 시작 완료 · one_time={use_ot} · 디버그포트={debug_port} · "
                 f"API보고IP={ip or '없음'} · CDP={'연결가능' if (ws or debug_port) else '불가'}"
             )
             if ip:

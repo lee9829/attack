@@ -212,6 +212,73 @@ body {
 }
 .easy-manual h3 { margin-top: 1.25rem; }
 
+.smartscreen-hint {
+  margin-top: 0.45rem !important;
+  padding: 0.45rem 0.55rem;
+  border-radius: 8px;
+  background: rgba(240, 180, 41, 0.1);
+  border: 1px solid rgba(240, 180, 41, 0.3);
+  color: #f0d78c !important;
+  font-size: 0.8rem !important;
+}
+.smartscreen-hint code {
+  background: #080a0e;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  font-size: 0.78rem;
+}
+
+.raid-setup {
+  margin: 0.85rem 0 1rem;
+  border: 1px solid rgba(255, 77, 109, 0.28);
+  background: radial-gradient(ellipse at top, #1a1220 0%, #0c0f14 55%);
+}
+.raid-modes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.55rem;
+  margin-top: 0.65rem;
+}
+.raid-mode {
+  appearance: none;
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid #3a3048;
+  background: #121018;
+  color: var(--text);
+  border-radius: 12px;
+  padding: 0.75rem 0.8rem;
+  font: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+}
+.raid-mode b {
+  display: block;
+  color: #ff7a92;
+  margin-bottom: 0.25rem;
+  font-size: 0.95rem;
+}
+.raid-mode span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+.raid-mode:hover {
+  border-color: #ff4d6d;
+  transform: translateY(-1px);
+}
+.raid-mode.active {
+  border-color: #3dd68c;
+  box-shadow: 0 0 0 1px rgba(61, 214, 140, 0.35), 0 0 20px rgba(255, 77, 109, 0.12);
+}
+.raid-mode.active b { color: var(--accent); }
+
+/* START feels like game raid */
+.btn-start-xl {
+  box-shadow: 0 0 24px rgba(61, 214, 140, 0.25);
+  letter-spacing: 0.04em;
+}
+
 .evidence-card {
   margin-top: 0.75rem;
   border: 1px solid rgba(61, 214, 140, 0.22);

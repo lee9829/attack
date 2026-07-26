@@ -44,7 +44,7 @@ from web.config_io import (  # noqa: E402
 from web.job_manager import JobManager  # noqa: E402
 from src.octo_client import OctoClient, OctoError  # noqa: E402
 
-APP_VERSION = "2.4.0"
+APP_VERSION = "2.4.1"
 BASE_DIR = _ROOT
 # Windows 통합 에이전트 EXE (웹에서 다운로드)
 DOWNLOADS_DIR = BASE_DIR / "downloads"
@@ -271,6 +271,45 @@ async def download_octo_agent():
             "Cache-Control": "no-store",
             "Content-Disposition": 'attachment; filename="OctoAgent.exe"',
         },
+    )
+
+
+@app.get("/download/unblock-agent.bat")
+async def download_unblock_bat():
+    """SmartScreen 의심 파일 해제용 bat (Unblock-File)."""
+    local = (
+        _ROOT / "agent" / "실행허용-의심파일해결.bat",
+        DOWNLOADS_DIR / "unblock-agent.bat",
+    )
+    path = next((p for p in local if p.is_file()), None)
+    if not path:
+        # generate on the fly
+        content = (
+            "@echo off\r\n"
+            "chcp 65001 >nul\r\n"
+            "echo Unblock OctoAgent.exe ...\r\n"
+            "powershell -NoProfile -ExecutionPolicy Bypass -Command "
+            "\"Unblock-File -LiteralPath ($env:USERPROFILE+'\\Desktop\\OctoAgent.exe') "
+            "-ErrorAction SilentlyContinue; "
+            "Get-ChildItem $env:USERPROFILE\\Downloads\\OctoAgent*.exe -ErrorAction SilentlyContinue "
+            "| ForEach-Object { Unblock-File $_.FullName }; "
+            "Write-Host OK\"\r\n"
+            "echo Done. Run OctoAgent.exe (More info - Run anyway if needed)\r\n"
+            "pause\r\n"
+        )
+        from starlette.responses import Response as StarletteResponse
+
+        return StarletteResponse(
+            content=content,
+            media_type="application/octet-stream",
+            headers={
+                "Content-Disposition": 'attachment; filename="unblock-agent.bat"',
+            },
+        )
+    return FileResponse(
+        path=str(path),
+        media_type="application/octet-stream",
+        filename="unblock-agent.bat",
     )
 
 
