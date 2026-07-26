@@ -241,12 +241,26 @@ class JobManager:
             # merge active_jobs list from agent
             if "active_jobs" in data:
                 prev["active_jobs"] = list(data.get("active_jobs") or [])
+            # cumulative click evidence board (profile / IP / real click)
+            if "evidence_board" in data and data.get("evidence_board") is not None:
+                prev["evidence_board"] = list(data.get("evidence_board") or [])
             for k, v in data.items():
-                if k == "active_jobs":
+                if k in ("active_jobs", "evidence_board"):
                     continue
                 if v is None or v == "":
                     # don't wipe existing fields with empty progress pings
-                    if k not in ("phase", "action", "loop", "parallel", "success", "fail", "total", "job"):
+                    if k not in (
+                        "phase",
+                        "action",
+                        "loop",
+                        "parallel",
+                        "success",
+                        "fail",
+                        "total",
+                        "job",
+                        "click_verified",
+                        "is_ad",
+                    ):
                         continue
                 prev[k] = v
             if data.get("phase"):
@@ -379,6 +393,8 @@ class JobManager:
                 merged = {**prev, **dict(info or {})}
                 if "active_jobs" in (info or {}):
                     merged["active_jobs"] = list(info.get("active_jobs") or [])
+                if "evidence_board" in (info or {}) and info.get("evidence_board") is not None:
+                    merged["evidence_board"] = list(info.get("evidence_board") or [])
                 self.state.progress = merged
                 phase = info.get("phase")
                 par = info.get("parallel") or merged.get("parallel") or 1
@@ -394,10 +410,12 @@ class JobManager:
                         f"동시 {par} · 활성 {n_act} · "
                         f"J{info.get('job')}/{info.get('total') or '?'}"
                     )
-                elif phase == "done_one":
+                elif phase in ("done_one", "evidence"):
+                    cv = info.get("click_verified")
                     self.state.status = (
                         f"동시 {par} · 성공 {info.get('success')} "
                         f"실패 {info.get('fail')}"
+                        + (f" · 클릭={'확정' if cv else '미확정'}" if cv is not None else "")
                     )
                 elif phase == "session_done":
                     self.state.status = (

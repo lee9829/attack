@@ -53,9 +53,9 @@ def default_config() -> Dict[str, Any]:
         "delay_between_jobs_sec": 15,
         "stop_profile_after_job": True,
         "max_jobs": 0,
-        "parallel_jobs": 3,
-        "stagger_start_sec": 1.5,
-        "parallel_jobs_max": 20,
+        "parallel_jobs": 10,
+        "stagger_start_sec": 0.8,
+        "parallel_jobs_max": 50,
         "octo": {
             "profile_os": "android",
             "mobile_fingerprint": True,

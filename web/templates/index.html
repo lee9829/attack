@@ -137,6 +137,43 @@
           <div id="workerBoard" class="worker-board"></div>
           <div id="activeJobs" class="active-jobs muted">실행 중 작업 없음</div>
         </div>
+
+        <div class="card evidence-card">
+          <div class="row gap wrap" style="justify-content:space-between;align-items:center">
+            <h2 style="margin:0">클릭 증거 보드 (프로필 · IP · 실제클릭)</h2>
+            <div class="row gap wrap">
+              <span class="stat-chip">클릭확정 <b id="evdClickOk">0</b></span>
+              <span class="stat-chip">실패/미확정 <b id="evdClickFail">0</b></span>
+              <span class="stat-chip">총 프로필 <b id="evdTotal">0</b></span>
+              <button type="button" class="btn sm ghost" id="btnClearEvidence">보드 지우기</button>
+            </div>
+          </div>
+          <p class="hint">
+            실제로 검색 결과 클릭 후 <strong>대상 사이트에 도착했는지</strong> 검증한 기록입니다.
+            프로필 / 출구IP / 검색어 / 광고여부 / 최종URL 이 한 줄로 남습니다.
+          </p>
+          <div class="table-wrap">
+            <table id="evidenceTable" class="evidence-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>클릭</th>
+                  <th>프로필</th>
+                  <th>출구IP</th>
+                  <th>계정</th>
+                  <th>검색어</th>
+                  <th>광고</th>
+                  <th>방법</th>
+                  <th>최종 URL</th>
+                  <th>시각</th>
+                </tr>
+              </thead>
+              <tbody id="evidenceBody">
+                <tr><td colspan="10" class="muted">아직 증거 없음 · START 후 자동 채움</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
         <div id="otpPanel" class="otp-panel hidden">
           <strong>2FA 코드 입력</strong>
           <p id="otpPrompt" class="hint"></p>
@@ -286,10 +323,20 @@
                 <input type="number" id="delayJobsHome" value="12" min="0" style="width:5.5rem" />
               </label>
               <label class="field inline">
-                <span>동시 Octo 창</span>
-                <input type="number" id="parallelJobsHome" value="5" min="1" max="20" style="width:5rem" />
+                <span>동시 Octo 창 (최대 50)</span>
+                <input type="number" id="parallelJobsHome" value="10" min="1" max="50" style="width:5rem" />
               </label>
             </div>
+            <div class="row gap wrap" style="margin-top:0.55rem">
+              <button type="button" class="btn sm ghost" data-scale="10">동시 10</button>
+              <button type="button" class="btn sm ghost" data-scale="20">동시 20</button>
+              <button type="button" class="btn sm primary" data-scale="50">50 전체 웨이브</button>
+              <button type="button" class="btn sm ghost" id="btnPresetFull">풀작전 프리셋</button>
+            </div>
+            <p class="hint" style="margin-top:0.4rem">
+              계정 50개면 동시 N으로 웨이브 처리합니다. PC 사양·Octo 동시 창 한도에 맞게 조절.
+              <strong>50 전체</strong>=동시 50 (한도 허용 시 전 프로필 동시).
+            </p>
             <label class="field">
               <span>Octo Cloud API 토큰 (프로필 생성·프록시 주입)</span>
               <input type="password" id="token" placeholder="Octo → Settings → API Token" autocomplete="off" />
@@ -642,8 +689,8 @@ user_id=123'></textarea>
           </p>
           <div class="row gap wrap">
             <label class="field inline">
-              <span>동시 프로필 수</span>
-              <input type="number" id="parallelJobs" value="3" min="1" max="20" style="width:5rem" />
+              <span>동시 프로필 수 (최대 50)</span>
+              <input type="number" id="parallelJobs" value="10" min="1" max="50" style="width:5rem" />
             </label>
             <label class="field inline">
               <span>시작 간격(초)</span>

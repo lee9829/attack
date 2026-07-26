@@ -3138,13 +3138,43 @@ async def _click_serp_result(
     allowed: List[str],
     require_domain: bool,
     log,
-) -> bool:
-    """Click one SERP result and verify we landed on an allowed own domain."""
+    is_ad: bool = False,
+    keyword: str = "",
+) -> Dict[str, Any]:
+    """
+    Click one SERP result and verify landing.
+    Returns evidence dict (clicked True/False + profile/IP/URLs).
+    """
+    from datetime import datetime
+
+    evidence: Dict[str, Any] = {
+        "clicked": False,
+        "ok": False,
+        "target_url": real,
+        "matched_url": real,
+        "final_url": "",
+        "serp_url": page.url or "",
+        "host_ok": False,
+        "is_ad": bool(is_ad),
+        "method": "",
+        "keyword": keyword or getattr(log, "keyword", "") or "",
+        "profile": getattr(log, "profile", "") or "",
+        "email": getattr(log, "email", "") or "",
+        "proxy": getattr(log, "proxy", "") or "",
+        "ip": getattr(log, "proxy_ip", "") or "미확인",
+        "job": getattr(log, "job_index", 0) or 0,
+        "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "error": "",
+    }
     host = urlparse(real).netloc or ""
     if require_domain and allowed and not _is_allowed_host(host, allowed):
+        evidence["error"] = f"가드: 대상 호스트 불일치 ({host})"
         log(f"[검색] 가드: 자사 도메인 아님 → 스킵 {real}")
-        return False
-    serp_url = page.url
+        if hasattr(log, "click_evidence"):
+            log.click_evidence(evidence)  # type: ignore[attr-defined]
+        return evidence
+
+    method = "element_click"
     try:
         await el.scroll_into_view_if_needed()
         await _rand_delay(300, 800)
@@ -3155,30 +3185,66 @@ async def _click_serp_result(
             await _rand_delay(150, 500)
         except Exception:
             pass
-        # IP context if JobLog
-        ip_hint = ""
-        if hasattr(log, "proxy_ip"):
-            ip_hint = f" 출구IP={getattr(log, 'proxy_ip', '미확인')}"
-        log(f"[CLICK] 자사 유기 결과 클릭 시도 → {real}{ip_hint}")
+        ip_hint = f" 출구IP={evidence['ip']}"
+        ad_mark = " [광고]" if is_ad else " [유기]"
+        log(
+            f"[CLICK] 클릭 시도{ad_mark} → {real} · 프로필={evidence['profile']} · "
+            f"작업={evidence['job']}{ip_hint}"
+        )
         await el.click(timeout=15000)
     except Exception as click_exc:
-        log(f"[검색] 요소 클릭 실패({click_exc}) → 자사 URL 직접 이동 {real}")
-        await page.goto(real, wait_until="domcontentloaded", timeout=90000)
-    await page.wait_for_load_state("domcontentloaded", timeout=90000)
+        method = "goto_fallback"
+        evidence["error"] = f"요소클릭실패→goto: {click_exc}"
+        log(f"[검색] 요소 클릭 실패({click_exc}) → URL 직접 이동 {real}")
+        try:
+            await page.goto(real, wait_until="domcontentloaded", timeout=90000)
+        except Exception as go_exc:
+            evidence["error"] = f"goto 실패: {go_exc}"
+            evidence["method"] = method
+            log(f"[검색] 직접 이동 실패: {go_exc}")
+            if hasattr(log, "click_evidence"):
+                log.click_evidence(evidence)  # type: ignore[attr-defined]
+            return evidence
+
+    evidence["method"] = method
+    try:
+        await page.wait_for_load_state("domcontentloaded", timeout=90000)
+    except Exception:
+        pass
     await _rand_delay(900, 2000)
-    final_host = urlparse(page.url).netloc or ""
+    final_url = page.url or ""
+    final_host = urlparse(final_url).netloc or ""
+    evidence["final_url"] = final_url
+    evidence["landed_url"] = final_url
+
     if require_domain and allowed and not _is_allowed_host(final_host, allowed):
-        log(f"[검색] 가드: 도착 호스트 자사 아님 ({final_host}) — 이 클릭 무효")
-        return False
-    ip_hint = ""
-    if hasattr(log, "proxy_ip"):
-        ip_hint = f" · 이 접속에 사용된 출구IP={getattr(log, 'proxy_ip', '미확인')}"
-    log(f"[검색] 자사 사이트 도착 url={page.url}{ip_hint}")
+        evidence["host_ok"] = False
+        evidence["error"] = f"도착 호스트 불일치 ({final_host})"
+        log(f"[검색] 가드: 도착 호스트 대상 아님 ({final_host}) — 이 클릭 무효")
+        if hasattr(log, "click_evidence"):
+            log.click_evidence(evidence)  # type: ignore[attr-defined]
+        return evidence
+
+    evidence["host_ok"] = True
+    evidence["clicked"] = True
+    evidence["ok"] = True
+    evidence["error"] = ""
     log(
-        f"[CLICK] 클릭 확정 · 프로필/프록시 세션으로 접속 완료 · "
-        f"호스트={final_host} · 최종URL={page.url}"
+        f"[검색] ★ 사이트 도착 확정 url={final_url} · 호스트={final_host} · "
+        f"출구IP={evidence['ip']} · 프로필={evidence['profile']}"
     )
-    return True
+    log(
+        f"[CLICK] 클릭 확정 · 방법={method} · 광고={is_ad} · "
+        f"프로필={evidence['profile']} · IP={evidence['ip']} · 최종URL={final_url}"
+    )
+    if hasattr(log, "click_evidence"):
+        log.click_evidence(evidence)  # type: ignore[attr-defined]
+    elif hasattr(log, "set_matched_url"):
+        try:
+            log.set_matched_url(final_url)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+    return evidence
 
 
 async def _find_and_click_many_own_sites(
@@ -3227,6 +3293,8 @@ async def _find_and_click_many_own_sites(
     clicked_keys: set[str] = set()
     visited: List[str] = []
     banner_total = 0
+    click_evidence: List[Dict[str, Any]] = []
+    verified_clicks = 0
 
     log(
         f"[검색] 다건 클릭 모드 keyword='{keyword}' 자사도메인={len(domain_set or allowed)}개 "
@@ -3313,18 +3381,30 @@ async def _find_and_click_many_own_sites(
             if len(clicked_keys) >= max_clicks:
                 break
             preview = (text or "")[:50]
+            is_ad = False
+            try:
+                is_ad = await _looks_like_google_ad(el)
+            except Exception:
+                is_ad = False
             log(
                 f"[검색] ★ 클릭 예약 ({len(clicked_keys)+1}/{max_clicks}) "
-                f"score={sc} url={real} title='{preview}'"
+                f"score={sc} ads={is_ad} url={real} title='{preview}'"
             )
-            ok = await _click_serp_result(
+            ev = await _click_serp_result(
                 page,
                 el,
                 real,
                 allowed=allowed,
                 require_domain=require_domain,
                 log=log,
+                is_ad=is_ad,
+                keyword=keyword,
             )
+            if isinstance(ev, dict):
+                click_evidence.append(ev)
+                ok = bool(ev.get("clicked") or ev.get("ok"))
+            else:
+                ok = bool(ev)
             if not ok:
                 u = (page.url or "").lower()
                 if "google." not in u or ("search" not in u and "q=" not in u):
@@ -3338,7 +3418,8 @@ async def _find_and_click_many_own_sites(
                 continue
 
             clicked_keys.add(key)
-            visited.append(page.url)
+            verified_clicks += 1
+            visited.append(page.url or (ev.get("final_url") if isinstance(ev, dict) else "") or real)
             traffic = human.get("_traffic") if isinstance(human, dict) else None
             if traffic is not None:
                 try:
@@ -3433,11 +3514,18 @@ async def _find_and_click_many_own_sites(
                 log("[검색] 다음 페이지 없음 — 이 검색어 종료")
                 break
 
+    log(
+        f"[검색] 클릭 결과 요약 verified={verified_clicks} keys={len(clicked_keys)} "
+        f"evidence={len(click_evidence)} banner={banner_total}"
+    )
     return {
         "clicks": len(clicked_keys),
+        "verified_clicks": verified_clicks,
         "visited": visited,
         "banner_clicks": banner_total,
         "ok": len(clicked_keys) > 0,
+        "click_evidence": click_evidence,
+        "click_verified": verified_clicks > 0,
     }
 
 
@@ -3804,6 +3892,11 @@ async def run_search_flow(
         "matched_urls": [],
         "cookies_set": 0,
         "error": "",
+        "click_evidence": [],
+        "click_verified": False,
+        "final_url": "",
+        "is_ad": False,
+        "click_method": "",
     }
     if not cfg or not cfg.get("enabled", True):
         out["error"] = "search_flow disabled"
@@ -4119,6 +4212,7 @@ async def run_search_flow(
     any_ok = False
     errors: List[str] = []
     winning_keyword = ""
+    all_evidence: List[Dict[str, Any]] = []
 
     for ki, keyword in enumerate(keywords, start=1):
         if hasattr(log, "set_keyword"):
@@ -4171,6 +4265,9 @@ async def run_search_flow(
             visited = list(batch.get("visited") or [])
             total_banners += int(batch.get("banner_clicks") or 0)
             all_visited.extend(visited)
+            for ev in list(batch.get("click_evidence") or []):
+                if isinstance(ev, dict):
+                    all_evidence.append(ev)
             out["keywords_done"].append(
                 {"keyword": keyword, "clicks": clicks, "visited": visited}
             )
@@ -4215,11 +4312,32 @@ async def run_search_flow(
     out["site_clicks"] = total_banners
     out["matched_urls"] = all_visited
     out["matched_url"] = all_visited[0] if all_visited else ""
+    out["click_evidence"] = all_evidence
+    verified_any = any(bool(e.get("clicked") or e.get("ok")) for e in all_evidence)
+    out["click_verified"] = verified_any or any_ok
+    if all_evidence:
+        last_ok = next(
+            (e for e in reversed(all_evidence) if e.get("clicked") or e.get("ok")),
+            all_evidence[-1],
+        )
+        out["final_url"] = str(last_ok.get("final_url") or out["matched_url"] or "")
+        out["is_ad"] = bool(last_ok.get("is_ad"))
+        out["click_method"] = str(last_ok.get("method") or "")
+        if out["final_url"]:
+            out["matched_url"] = out["final_url"]
     if winning_keyword:
         out["keyword"] = winning_keyword
     if hasattr(log, "set_matched_url") and out["matched_url"]:
         try:
             log.set_matched_url(out["matched_url"])  # type: ignore[attr-defined]
+        except Exception:
+            pass
+    if hasattr(log, "audit"):
+        try:
+            log.audit(  # type: ignore[attr-defined]
+                f"증거합계 evidence={len(all_evidence)} verified={out['click_verified']} "
+                f"keyword='{out.get('keyword')}' final={out.get('final_url') or '-'}"
+            )
         except Exception:
             pass
 
@@ -4240,6 +4358,7 @@ async def run_search_flow(
     log(
         f"[SEARCH] DONE ok={out['search_ok']} visits={out['visits']} "
         f"cta={out['site_clicks']} keywords_tried={len(out['keywords_done'])} "
+        f"click_verified={out['click_verified']} evidence={len(all_evidence)} "
         f"hit='{winning_keyword}' urls={len(all_visited)}"
     )
     for u in all_visited[:20]:
@@ -4471,15 +4590,31 @@ async def run_browser_job(
             result["site_clicks"] = int(search_result.get("site_clicks") or 0)
             result["keyword"] = str(search_result.get("keyword") or sf.get("keyword") or "")
             result["matched_url"] = str(search_result.get("matched_url") or "")
+            result["final_url"] = str(search_result.get("final_url") or result["matched_url"] or "")
+            result["click_verified"] = bool(search_result.get("click_verified"))
+            result["click_evidence"] = list(search_result.get("click_evidence") or [])
+            result["is_ad"] = bool(search_result.get("is_ad"))
+            result["click_method"] = str(search_result.get("click_method") or "")
             if search_result.get("error") and not result["search_ok"]:
                 result["error"] = str(search_result["error"])
             result["targets_ok"] = result["search_ok"]
             if traffic:
                 traffic.log_phase_summary()
             log(
-                f"[SEARCH] 종료 ok={result['search_ok']} visits={result['search_visits']} "
-                f"banner_clicks={result['site_clicks']} matched={result['matched_url'] or '-'}"
+                f"[SEARCH] 종료 ok={result['search_ok']} verified={result['click_verified']} "
+                f"visits={result['search_visits']} banner={result['site_clicks']} "
+                f"matched={result['matched_url'] or '-'} method={result['click_method'] or '-'} "
+                f"ad={result['is_ad']} evidence={len(result['click_evidence'])}"
             )
+            if hasattr(log, "audit"):
+                try:
+                    log.audit(  # type: ignore[attr-defined]
+                        f"잡종료 실제클릭={result['click_verified']} "
+                        f"IP={result.get('detected_ip') or '-'} "
+                        f"URL={result.get('final_url') or result.get('matched_url') or '-'}"
+                    )
+                except Exception:
+                    pass
         elif targets:
             if traffic:
                 traffic.begin_phase("direct_targets")

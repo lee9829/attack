@@ -570,7 +570,10 @@ class AgentProgressBody(BaseModel):
     success: int = 0
     fail: int = 0
     total: int = 0
+    click_verified: bool = False
+    is_ad: bool = False
     active_jobs: list = Field(default_factory=list)
+    evidence_board: list = Field(default_factory=list)
 
 
 @app.post("/api/agent/heartbeat")

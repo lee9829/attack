@@ -315,6 +315,7 @@ class JobRunner:
     ):
         self.config = config
         self.base_dir = base_dir
+        self.work_dir = Path(base_dir)
         self.should_cancel = should_cancel or (lambda: False)
         self.ask_2fa = ask_2fa
         self.on_job_progress = on_job_progress
@@ -323,6 +324,7 @@ class JobRunner:
         self._log_lock = threading.Lock()
         self._active_jobs: Dict[int, Dict[str, Any]] = {}
         self._active_lock = threading.Lock()
+        self._evidence_board: List[Dict[str, Any]] = []
 
         # dual log: GUI/console + rotating session file under logs/
         user_log = log or default_log
@@ -1070,18 +1072,69 @@ class JobRunner:
                     f"→ 이후 검색·클릭은 이 IP로 나간 것입니다"
                 )
             g_ok = result.get("google_ok")
+            click_ok = bool(result.get("click_verified") or result.get("search_ok"))
+            final_u = str(result.get("final_url") or result.get("matched_url") or "")
             self._touch_active(
                 job_index,
-                phase="done" if result.get("ok") or result.get("search_ok") else "browser",
-                action="클릭 완료" if result.get("search_ok") else "작업 종료",
+                phase="done" if click_ok else "browser",
+                action=(
+                    "★실제클릭확정"
+                    if click_ok
+                    else "클릭미확정/종료"
+                ),
                 profile=account.profile_title,
                 email=account.email,
                 ip=browser_ip or jlog.proxy_ip or ip or "미확인",
                 proxy=proxy.display,
                 keyword=str(result.get("keyword") or ""),
-                matched_url=str(result.get("matched_url") or ""),
+                matched_url=final_u,
                 google="로그인OK" if g_ok else ("로그인실패" if g_ok is False else "스킵/미확인"),
                 has_2fa=bool(account.otp_secret),
+                click_verified=click_ok,
+                is_ad=bool(result.get("is_ad")),
+                click_method=str(result.get("click_method") or ""),
+            )
+            # evidence board row for live UI
+            ev_row = {
+                "job": job_index,
+                "profile": account.profile_title,
+                "email": account.email,
+                "ip": browser_ip or jlog.proxy_ip or ip or "미확인",
+                "proxy": proxy.display,
+                "keyword": str(result.get("keyword") or ""),
+                "matched_url": final_u,
+                "final_url": final_u,
+                "clicked": click_ok,
+                "click_verified": click_ok,
+                "google_ok": g_ok,
+                "is_ad": bool(result.get("is_ad")),
+                "method": str(result.get("click_method") or ""),
+                "ts": time.time(),
+            }
+            self._append_evidence_file(ev_row)
+            # push cumulative evidence via progress
+            with self._active_lock:
+                board = list(getattr(self, "_evidence_board", []) or [])
+                board.append(ev_row)
+                # keep last 200
+                self._evidence_board = board[-200:]
+                board_snap = list(self._evidence_board)
+            self._emit_progress(
+                {
+                    "phase": "evidence",
+                    "job": job_index,
+                    "profile": account.profile_title,
+                    "ip": ev_row["ip"],
+                    "keyword": ev_row["keyword"],
+                    "matched_url": final_u,
+                    "click_verified": click_ok,
+                    "evidence_board": board_snap,
+                    "active_jobs": self.active_jobs_snapshot(),
+                }
+            )
+            jlog.audit(
+                f"증거보드 추가 job={job_index} clicked={click_ok} "
+                f"profile={account.profile_title} ip={ev_row['ip']} url={final_u or '-'}"
             )
 
             # Mobile fingerprint ↔ exit IP match report (Octo path only)
@@ -1112,7 +1165,7 @@ class JobRunner:
                 {
                     "job": job_index,
                     "profile": account.profile_title,
-                    "uuid": uuid[:8] + "…",
+                    "uuid": (uuid[:8] + "…") if uuid else "-",
                     "profile_os": profile_info.get("os") or prof_opts.get("os_name"),
                     "mobile_fp": bool(profile_info.get("mobile")),
                     "proxy": proxy.display,
@@ -1123,6 +1176,10 @@ class JobRunner:
                     "email": account.email or "-",
                     "keyword": result.get("keyword") or sf.get("keyword") or "-",
                     "matched_url": result.get("matched_url") or "-",
+                    "final_url": result.get("final_url") or result.get("matched_url") or "-",
+                    "click_verified": bool(result.get("click_verified") or result.get("search_ok")),
+                    "click_method": result.get("click_method") or "-",
+                    "is_ad": result.get("is_ad"),
                     "search_ok": result.get("search_ok"),
                     "visits": result.get("search_visits"),
                     "banner_clicks": result.get("site_clicks") or result.get("banner_clicks"),
@@ -1146,6 +1203,10 @@ class JobRunner:
                 "ip_match": ip_match,
                 "traffic": traffic,
                 "result": result,
+                "click_verified": bool(result.get("click_verified") or result.get("search_ok")),
+                "matched_url": result.get("final_url") or result.get("matched_url") or "",
+                "keyword": result.get("keyword") or "",
+                "evidence": list(result.get("click_evidence") or []),
             }
         finally:
             if uuid and self.config.get("stop_profile_after_job", True) and not use_pw:
@@ -1175,10 +1236,21 @@ class JobRunner:
         except (TypeError, ValueError):
             workers = 1
         workers = max(1, workers)
-        # hard cap: Octo Local + machine safety
-        cap = int(self.config.get("parallel_jobs_max") or 20)
-        cap = max(1, min(cap, 30))
+        # 50 프로필 전체 운용 지원 (PC/Octo 한도에 맞게 UI에서 조절)
+        cap = int(self.config.get("parallel_jobs_max") or 50)
+        cap = max(1, min(cap, 50))
         return min(workers, n_jobs, cap)
+
+    def _append_evidence_file(self, row: Dict[str, Any]) -> None:
+        """감사 추적: 클릭 증거를 JSONL로 누적 저장."""
+        try:
+            path = self.work_dir / "click_evidence.jsonl"
+            import json as _json
+
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(_json.dumps(row, ensure_ascii=False) + "\n")
+        except Exception:
+            pass
 
     def _set_active(self, job_index: int, info: Optional[Dict[str, Any]]) -> None:
         with self._active_lock:
@@ -1209,6 +1281,8 @@ class JobRunner:
                 "google": snap.get("google"),
                 "has_2fa": snap.get("has_2fa"),
                 "action": snap.get("action"),
+                "click_verified": snap.get("click_verified"),
+                "is_ad": snap.get("is_ad"),
             }
         )
 
@@ -1434,7 +1508,11 @@ class JobRunner:
                 return
 
             assert out is not None
-            google_ok = bool((out.get("result") or {}).get("google_ok"))
+            r = out.get("result") or {}
+            google_ok = bool(r.get("google_ok"))
+            click_v = bool(out.get("click_verified") or r.get("click_verified") or out.get("ok"))
+            matched = out.get("matched_url") or r.get("final_url") or r.get("matched_url") or ""
+            kw = out.get("keyword") or r.get("keyword") or ""
             with hist_lock:
                 history.append(
                     {
@@ -1444,14 +1522,25 @@ class JobRunner:
                         "proxy": out.get("proxy"),
                         "ip": out.get("proxy_ip"),
                         "ok": out.get("ok"),
+                        "click_verified": click_v,
                         "google_ok": google_ok,
-                        "matched": (out.get("result") or {}).get("matched_url"),
-                        "keyword": (out.get("result") or {}).get("keyword"),
-                        "cookies_set": (out.get("result") or {}).get("cookies_set"),
+                        "matched": matched,
+                        "final_url": matched,
+                        "keyword": kw,
+                        "is_ad": r.get("is_ad"),
+                        "method": r.get("click_method"),
+                        "cookies_set": r.get("cookies_set"),
                         "has_2fa": bool(account.otp_secret),
                     }
                 )
-            if out.get("ok"):
+            if out.get("ok") and click_v:
+                with stats_lock:
+                    success += 1
+                boot.ok(
+                    f"[{i}/{n_jobs}] ★실제클릭 · 프로필={account.profile_title} · "
+                    f"IP={out.get('proxy_ip') or '-'} · URL={matched or '-'}"
+                )
+            elif out.get("ok"):
                 with stats_lock:
                     success += 1
                 boot.ok(f"[{i}/{n_jobs}] 성공 · {account.email or account.profile_title}")
@@ -1459,11 +1548,12 @@ class JobRunner:
                 with stats_lock:
                     fail += 1
                 boot.warn(
-                    f"[{i}/{n_jobs}] 미완료 · {account.email or account.profile_title} "
-                    f"google_ok={google_ok}"
+                    f"[{i}/{n_jobs}] 미완료 · 프로필={account.profile_title} · "
+                    f"IP={out.get('proxy_ip') or '-'} · google={google_ok} · click={click_v}"
                 )
             with stats_lock:
                 s, f = success, fail
+            board = list(getattr(self, "_evidence_board", []) or [])
             self._emit_progress(
                 {
                     "phase": "done_one",
@@ -1471,9 +1561,14 @@ class JobRunner:
                     "total": n_jobs,
                     "email": account.email,
                     "profile": account.profile_title,
+                    "ip": out.get("proxy_ip"),
+                    "keyword": kw,
+                    "matched_url": matched,
+                    "click_verified": click_v,
                     "success": s,
                     "fail": f,
                     "ok": bool(out.get("ok")),
+                    "evidence_board": board,
                 }
             )
 

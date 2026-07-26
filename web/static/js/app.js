@@ -31,6 +31,59 @@
     });
   }
 
+  const evidenceState = { rows: [] };
+
+  function renderEvidenceBoard(rows) {
+    const body = $("#evidenceBody");
+    if (!body) return;
+    const list = Array.isArray(rows) ? rows : [];
+    if (list.length) {
+      // merge by job+profile+ts-ish, keep latest full board
+      evidenceState.rows = list.slice(-200);
+    }
+    const data = evidenceState.rows;
+    let ok = 0;
+    let fail = 0;
+    data.forEach((r) => {
+      if (r.clicked || r.click_verified) ok += 1;
+      else fail += 1;
+    });
+    if ($("#evdClickOk")) $("#evdClickOk").textContent = String(ok);
+    if ($("#evdClickFail")) $("#evdClickFail").textContent = String(fail);
+    if ($("#evdTotal")) $("#evdTotal").textContent = String(data.length);
+    if (!data.length) {
+      body.innerHTML =
+        `<tr><td colspan="10" class="muted">아직 증거 없음 · START 후 자동 채움</td></tr>`;
+      return;
+    }
+    body.innerHTML = data
+      .slice()
+      .reverse()
+      .map((r) => {
+        const clicked = !!(r.clicked || r.click_verified);
+        const t = r.ts
+          ? new Date((r.ts < 1e12 ? r.ts * 1000 : r.ts)).toLocaleTimeString("ko-KR", {
+              hour12: false,
+            })
+          : "—";
+        return `<tr class="${clicked ? "evd-ok" : "evd-fail"}">
+          <td>${esc(r.job ?? "—")}</td>
+          <td><b class="${clicked ? "ok" : "bad"}">${clicked ? "YES" : "NO"}</b></td>
+          <td>${esc(r.profile || "—")}</td>
+          <td class="wc-ip">${esc(r.ip || "—")}</td>
+          <td>${esc((r.email || "—").toString().slice(0, 28))}</td>
+          <td>${esc(r.keyword || "—")}</td>
+          <td>${r.is_ad ? "광고" : "유기"}</td>
+          <td>${esc(r.method || "—")}</td>
+          <td class="wc-url" title="${esc(r.final_url || r.matched_url || "")}">${esc(
+            ((r.final_url || r.matched_url || "—") + "").slice(0, 64)
+          )}</td>
+          <td>${t}</td>
+        </tr>`;
+      })
+      .join("");
+  }
+
   function renderWorkerBoard(jobs, running) {
     const board = $("#workerBoard");
     if (!board) return;
@@ -65,6 +118,9 @@
           <div class="wc-row"><span>구글</span><b class="wc-g ${gClass}">${esc(g)}</b></div>
           <div class="wc-row"><span>검색어</span><b>${esc(a.keyword || "—")}</b></div>
           <div class="wc-row"><span>클릭</span><b class="wc-url">${esc((a.matched_url || "—").toString().slice(0, 64))}</b></div>
+          <div class="wc-row"><span>실클릭</span><b class="${a.click_verified ? "ok" : ""}">${
+            a.click_verified === true ? "YES확정" : a.click_verified === false ? "NO" : "—"
+          }</b></div>
           <div class="wc-row"><span>2FA</span><b>${a.has_2fa ? "Y" : "N"}</b></div>
         </div>`;
       })
@@ -1145,6 +1201,34 @@
 
     const act = p.active_jobs || [];
     renderWorkerBoard(act, s.running);
+    if (Array.isArray(p.evidence_board)) {
+      renderEvidenceBoard(p.evidence_board);
+    } else if (p.phase === "evidence" || p.click_verified != null) {
+      // single row push — append if board missing
+      if (p.profile || p.matched_url) {
+        const one = {
+          job: p.job,
+          profile: p.profile,
+          email: p.email,
+          ip: p.ip,
+          keyword: p.keyword,
+          matched_url: p.matched_url,
+          final_url: p.matched_url,
+          clicked: !!p.click_verified,
+          click_verified: !!p.click_verified,
+          is_ad: !!p.is_ad,
+          method: p.click_method || "",
+          ts: Date.now(),
+        };
+        const exists = evidenceState.rows.some(
+          (r) => r.job === one.job && r.profile === one.profile && r.matched_url === one.matched_url
+        );
+        if (!exists) {
+          evidenceState.rows.push(one);
+          renderEvidenceBoard(evidenceState.rows);
+        }
+      }
+    }
     const box = $("#activeJobs");
     if (box) {
       if (act.length) {
@@ -1261,6 +1345,33 @@
     $("#btnAddSite")?.addEventListener("click", () => {
       addDynRow($("#siteList"), "", "target-domain.com");
       syncSitesTextarea();
+    });
+    $$("[data-scale]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const n = Number(b.dataset.scale || 10);
+        if ($("#parallelJobsHome")) $("#parallelJobsHome").value = n;
+        if ($("#parallelJobs")) $("#parallelJobs").value = n;
+        toast(`동시 Octo 창 = ${n} (계정 50개면 웨이브 처리)`);
+      })
+    );
+    $("#btnPresetFull")?.addEventListener("click", () => {
+      if ($("#parallelJobsHome")) $("#parallelJobsHome").value = 50;
+      if ($("#parallelJobs")) $("#parallelJobs").value = 50;
+      if ($("#singleClick")) $("#singleClick").checked = true;
+      if ($("#kwRotate")) $("#kwRotate").checked = true;
+      if ($("#kwShuffle")) $("#kwShuffle").checked = true;
+      if ($("#kwFallback")) $("#kwFallback").checked = true;
+      if ($("#skipAds")) $("#skipAds").checked = false;
+      if ($("#preferAds")) $("#preferAds").checked = true;
+      if ($("#maxClicksHome")) $("#maxClicksHome").value = 1;
+      if ($("#maxSerpHome")) $("#maxSerpHome").value = 3;
+      if ($("#macroLoops")) $("#macroLoops").value = 1;
+      if ($("#staggerStart")) $("#staggerStart").value = 0.5;
+      toast("풀작전 프리셋: 동시50 · 1클릭 · 검색다양 · 광고포함");
+    });
+    $("#btnClearEvidence")?.addEventListener("click", () => {
+      evidenceState.rows = [];
+      renderEvidenceBoard([]);
     });
     // sync home ↔ detail skip ads
     $("#skipAds")?.addEventListener("change", () => {

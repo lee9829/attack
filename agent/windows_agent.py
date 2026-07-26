@@ -209,17 +209,27 @@ class AgentCore:
         cfg["browser_engine"] = "octo"
         cfg["dry_run"] = bool(job.get("dry_run"))
         cfg.setdefault("local_base", "http://127.0.0.1:58888/api")
-        # 동시 공격 빠르게
+        # 50 프로필까지 동시/웨이브 운용 (웹 설정 존중, 하한만 보정)
         try:
-            if int(cfg.get("parallel_jobs") or 1) < 1:
-                cfg["parallel_jobs"] = 3
+            pj = int(cfg.get("parallel_jobs") or 1)
+            if pj < 1:
+                pj = 10
+            cfg["parallel_jobs"] = min(pj, 50)
         except Exception:
-            cfg["parallel_jobs"] = 3
+            cfg["parallel_jobs"] = 10
+        cfg["parallel_jobs_max"] = max(int(cfg.get("parallel_jobs_max") or 50), 50)
         try:
-            if float(cfg.get("stagger_start_sec") or 0) > 0.6:
-                cfg["stagger_start_sec"] = 0.35
+            st = float(cfg.get("stagger_start_sec") or 0)
+            if st > 2.0 and int(cfg.get("parallel_jobs") or 1) >= 10:
+                cfg["stagger_start_sec"] = 0.5
         except Exception:
-            cfg["stagger_start_sec"] = 0.35
+            cfg["stagger_start_sec"] = 0.5
+        # 섬세 증거 로그 기본 ON
+        sf = dict(cfg.get("search_flow") or {})
+        sf.setdefault("single_click", True)
+        sf.setdefault("keyword_rotate", True)
+        sf.setdefault("keyword_shuffle", True)
+        cfg["search_flow"] = sf
 
         accounts: List[AccountJob] = []
         for i, r in enumerate(list(job.get("accounts") or [])):

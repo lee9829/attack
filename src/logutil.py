@@ -23,6 +23,8 @@ TAG_KO = {
     "SUM": "요약",
     "TRAFFIC": "트래픽",
     "MATCH": "매칭",
+    "EVD": "증거",
+    "AUDIT": "감사",
 }
 
 
@@ -114,6 +116,49 @@ class JobLog:
     def click(self, msg: str) -> None:
         self._emit("CLICK", msg)
 
+    def evidence(self, msg: str) -> None:
+        """실제 클릭·도착 여부를 감사 추적용으로 남김."""
+        self._emit("EVD", msg)
+
+    def audit(self, msg: str) -> None:
+        self._emit("AUDIT", msg)
+
+    def click_evidence(self, data: Dict[str, Any]) -> None:
+        """
+        섬세한 클릭 증거 1건.
+        필수 느낌 키: clicked, profile, ip, keyword, matched_url, final_url
+        """
+        clicked = bool(data.get("clicked") or data.get("ok"))
+        mark = "YES·실제클릭확정" if clicked else "NO·클릭실패/미도착"
+        lines = [
+            f"════ 클릭증거 {mark} ════",
+            f"  작업={data.get('job') or self.job_index} · 프로필={data.get('profile') or self.profile}",
+            f"  계정={data.get('email') or self.email} · 출구IP={data.get('ip') or self.proxy_ip}",
+            f"  프록시={data.get('proxy') or self.proxy}",
+            f"  검색어='{data.get('keyword') or self.keyword or '-'}'",
+            f"  클릭대상URL={data.get('matched_url') or data.get('target_url') or '-'}",
+            f"  도착최종URL={data.get('final_url') or data.get('landed_url') or '-'}",
+            f"  호스트검증={data.get('host_ok')} · 광고여부={data.get('is_ad')} · 방법={data.get('method') or '-'}",
+            f"  SERP={data.get('serp_url') or '-'} · 시각={data.get('ts') or ts()}",
+        ]
+        if data.get("error"):
+            lines.append(f"  오류={data.get('error')}")
+        for ln in lines:
+            self._emit("EVD", ln)
+        if clicked:
+            self.set_matched_url(str(data.get("final_url") or data.get("matched_url") or ""))
+            self._emit(
+                "OK",
+                f"★ 실제 클릭·도착 확인 · 프로필={data.get('profile') or self.profile} · "
+                f"IP={data.get('ip') or self.proxy_ip} · URL={data.get('final_url') or data.get('matched_url')}",
+            )
+        else:
+            self._emit(
+                "WARN",
+                f"★ 클릭 미확정 · 프로필={data.get('profile') or self.profile} · "
+                f"IP={data.get('ip') or self.proxy_ip}",
+            )
+
     def search(self, msg: str) -> None:
         self._emit("SEARCH", msg)
 
@@ -152,6 +197,10 @@ class JobLog:
             "email": "Google 계정",
             "keyword": "검색어",
             "matched_url": "클릭한 사이트 URL",
+            "final_url": "도착 최종 URL",
+            "click_verified": "실제 클릭·도착 검증",
+            "click_method": "클릭 방법",
+            "is_ad": "광고(스폰서) 클릭",
             "search_ok": "검색·클릭 성공",
             "visits": "사이트 방문 횟수",
             "banner_clicks": "CTA/배너 클릭 수",
@@ -168,11 +217,18 @@ class JobLog:
             "dry_run": "DRY RUN",
         }
         for k, v in data.items():
-            if k in ("traffic_detail", "click_slices", "ip_match_detail"):
+            if k in ("traffic_detail", "click_slices", "ip_match_detail", "click_evidence", "evidence"):
                 continue
             label = labels.get(k, k)
             self._emit("SUM", f"{label} = {v}")
-        # always restate IP clearly
+        # always restate click+IP clearly for operators
+        cv = data.get("click_verified")
+        self._emit(
+            "SUM",
+            f"※ 실제클릭검증={cv} · 출구IP={data.get('proxy_ip') or self.proxy_ip} · "
+            f"프로필={data.get('profile') or self.profile} · "
+            f"URL={data.get('final_url') or data.get('matched_url') or '-'}",
+        )
         self._emit(
             "SUM",
             f"※ 이 작업에서 클릭/접속에 쓰인 출구 IP = {data.get('proxy_ip') or self.proxy_ip}",
